@@ -139,11 +139,14 @@ class ConnectionManagerImpl(
                         runBlocking {
                              sendMessage(RemoteMessage.newBuilder().setRemoteVoicePayload(RemoteVoicePayload.newBuilder().setSessionId(sid).setSamples(ByteString.copyFrom(buffer, 0, read)).build()).build())
                         }
+                    } else if (read < 0) {
+                        Logger.log("Ошибка AudioRecord: $read")
+                        break
                     }
                 }
                 recorder.stop()
                 recorder.release()
-            } catch (e: Exception) { Logger.log("Голос поток упал: ${e.message}") }
+            } catch (e: Exception) { Logger.log("Голос поток упал: ${e.stackTraceToString()}") }
         }
     }
 

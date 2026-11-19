@@ -79,31 +79,42 @@ class AirMouseController(context: Context) : SensorEventListener {
     fun initBluetoothHid() {
         try {
             val adapter = bluetoothAdapter
-            if (adapter == null || !adapter.isEnabled) {
-                _btStatus.value = "Включите Bluetooth на телефоне"
-                Logger.log("AirMouse: Bluetooth выключен или недоступен")
+            if (adapter == null) {
+                _btStatus.value = "BT адаптер не найден"
+                Logger.log("AirMouse: BluetoothAdapter is null")
                 return
             }
-            _btStatus.value = "Запуск Bluetooth HID мыши..."
-            adapter.getProfileProxy(appContext, object : BluetoothProfile.ServiceListener {
+            if (!adapter.isEnabled) {
+                _btStatus.value = "Включите Bluetooth"
+                Logger.log("AirMouse: Bluetooth disabled")
+                return
+            }
+
+            _btStatus.value = "Запуск HID..."
+            val success = adapter.getProfileProxy(appContext, object : BluetoothProfile.ServiceListener {
                 override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
                     if (profile == BluetoothProfile.HID_DEVICE) {
                         hidDevice = proxy as BluetoothHidDevice
+                        Logger.log("AirMouse: HID Service Connected")
                         registerHidApp()
+                    } else {
+                        Logger.log("AirMouse: Connected profile is not HID ($profile)")
                     }
                 }
 
                 override fun onServiceDisconnected(profile: Int) {
-                    if (profile == BluetoothProfile.HID_DEVICE) {
-                        hidDevice = null
-                        _isBtConnected.value = false
-                        _btStatus.value = "BT HID отключен"
-                    }
+                    Logger.log("AirMouse: HID Service Disconnected")
+                    hidDevice = null
                 }
             }, BluetoothProfile.HID_DEVICE)
+            
+            if (!success) {
+                _btStatus.value = "Ошибка инициализации HID прокси"
+                Logger.log("AirMouse: Failed to get HID profile proxy")
+            }
         } catch (e: Exception) {
-            Logger.log("Ошибка инициализации Bluetooth HID: ${e.message}")
-            _btStatus.value = "Ошибка BT: ${e.message}"
+            Logger.log("AirMouse CRITICAL: ${e.stackTraceToString()}")
+            _btStatus.value = "Крит. ошибка BT"
         }
     }
 
