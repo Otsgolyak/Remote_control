@@ -3,6 +3,8 @@ package com.remote.control.data.update
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -14,32 +16,37 @@ interface UpdateRepository {
     suspend fun getLatestReleaseVersion(): String?
     suspend fun downloadUpdate(url: String, outputFile: File): Boolean
     fun installUpdate(context: Context, apkFile: File)
+    suspend fun checkForUpdates(): Boolean
 }
 
-class UpdateRepositoryImpl(private val client: OkHttpClient) : UpdateRepository {
-    override suspend fun getLatestReleaseVersion(): String? {
+class UpdateRepositoryImpl(
+    private val context: Context,
+    private val client: OkHttpClient = OkHttpClient()
+) : UpdateRepository {
+
+    override suspend fun getLatestReleaseVersion(): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("https://api.github.com/repos/Otsgolyak/Remote_control/releases/latest")
             .build()
-        
-        return try {
+
+        try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val body = response.body?.string() ?: return null
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
                 val json = JSONObject(body)
-                json.getString("tag_name")
+                json.optString("tag_name", null)
             }
         } catch (e: Exception) {
             null
         }
     }
 
-    override suspend fun downloadUpdate(url: String, outputFile: File): Boolean {
+    override suspend fun downloadUpdate(url: String, outputFile: File): Boolean = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
-        return try {
+        try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return false
-                
+                if (!response.isSuccessful) return@withContext false
+
                 response.body?.byteStream()?.use { input ->
                     FileOutputStream(outputFile).use { output ->
                         input.copyTo(output)
@@ -64,5 +71,18 @@ class UpdateRepositoryImpl(private val client: OkHttpClient) : UpdateRepository 
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
+    }
+
+    override suspend fun checkForUpdates(): Boolean {
+        val apkFile = File(context.cacheDir, "app-debug.apk")
+        val downloadUrl = "https://github.com/Otsgolyak/Remote_control/releases/latest/download/app-debug.apk"
+        val downloaded = downloadUpdate(downloadUrl, apkFile)
+        if (downloaded && apkFile.exists()) {
+            withContext(Dispatchers.Main) {
+                installUpdate(context, apkFile)
+            }
+            return true
+        }
+        return false
     }
 }

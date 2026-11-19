@@ -1,9 +1,10 @@
-name: Android Build
+name: Android Build & Release
 
 on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,27 +13,39 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Build with Gradle
-      run: |
-        if [ -f gradlew ]; then
-          chmod +x gradlew
-          ./gradlew assembleDebug
-        else
-          gradle assembleDebug
-        fi
-
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+    - name: Setup Gradle 8.5
+      uses: gradle/actions/setup-gradle@v4
       with:
-        files: app/build/outputs/apk/debug/app-debug.apk
+        gradle-version: '8.5'
+
+    - name: Build Debug APK
+      run: |
+        gradle assembleDebug
+        cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Remote_control-v1.0.0.apk
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Remote_control-v1.0.0-apk
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/apk/debug/Remote_control-v1.0.0.apk
+
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.0
+        name: "Release v1.0.0 (Xiaomi TV Remote)"
+        body: "Нативный Wi-Fi + Bluetooth пульт для Android TV (Xiaomi TV). Скачайте APK ниже для прямой установки на смартфон."
+        files: |
+          app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/apk/debug/Remote_control-v1.0.0.apk
         draft: false
         prerelease: false

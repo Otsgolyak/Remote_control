@@ -17,12 +17,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
     }
 }
 
@@ -54,6 +71,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Protobuf & gRPC
     implementation("com.google.protobuf:protobuf-kotlin-lite:3.24.4")
@@ -61,7 +80,9 @@ dependencies {
     implementation("io.grpc:grpc-protobuf-lite:1.58.0")
     implementation("io.grpc:grpc-stub:1.58.0")
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.76")
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // ADB over Wi-Fi
+    implementation("dev.mobile:dadb:1.2.10")
 
     // Updates
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

@@ -1,12 +1,8 @@
 package com.remote.control.data.bluetooth
 
 import android.hardware.SensorManager
-import javax.inject.Inject
 
-/**
- * Implementation of BluetoothHidRepository.
- */
-class BluetoothHidRepositoryImpl @Inject constructor(
+class BluetoothHidRepositoryImpl(
     private val sensorManager: SensorManager,
     private val bluetoothHidDevice: BluetoothHidDevice
 ) : BluetoothHidRepository {
@@ -20,17 +16,21 @@ class BluetoothHidRepositoryImpl @Inject constructor(
     }
 
     override fun sendGyroscopeEvent(x: Float, y: Float, z: Float) {
-        // Here we would process sensor data and pack it into an HID report
         val report = createGyroReport(x, y, z)
         bluetoothHidDevice.sendReport(report)
     }
 
     override fun sendKeyEvent(keyCode: Int, pressed: Boolean) {
-        // Send keyboard event via HID
+        val report = byteArrayOf(0x02, if (pressed) 0x01 else 0x00, keyCode.toByte())
+        bluetoothHidDevice.sendReport(report)
     }
 
     private fun createGyroReport(x: Float, y: Float, z: Float): ByteArray {
-        // Mock implementation of HID report creation
-        return byteArrayOf(0x01, x.toInt().toByte(), y.toInt().toByte(), z.toInt().toByte())
+        return byteArrayOf(
+            0x01,
+            x.toInt().coerceIn(-127, 127).toByte(),
+            y.toInt().coerceIn(-127, 127).toByte(),
+            z.toInt().coerceIn(-127, 127).toByte()
+        )
     }
 }

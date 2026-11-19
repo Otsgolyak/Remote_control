@@ -4,7 +4,7 @@ kotlin = "1.9.20"
 compose = "1.5.4"
 protobufPlugin = "0.9.4"
 protobuf = "3.24.4"
-dadb = "1.4.0"
+dadb = "1.2.10"
 room = "2.6.1"
 
 [libraries]
