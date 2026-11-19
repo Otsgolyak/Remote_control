@@ -15,6 +15,11 @@ import androidx.navigation.compose.rememberNavController
 import com.remote.control.ui.HomeViewModel
 import com.remote.control.ui.screens.HomeScreen
 import com.remote.control.ui.screens.PairingScreen
+import com.remote.control.ui.screens.SettingsScreen
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.remote.control.data.device.DeviceRepository
+import com.remote.control.ui.HomeViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,7 +43,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val homeViewModel: HomeViewModel = viewModel()
+    val context = LocalContext.current
+    val repository = remember { DeviceRepository(context) }
+    val viewModelFactory = remember { HomeViewModelFactory(repository) }
+    val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
 
     NavHost(navController = navController, startDestination = "pairing") {
         composable("pairing") {
@@ -49,7 +57,15 @@ fun AppNavigation() {
             })
         }
         composable("home") {
-            HomeScreen(homeViewModel)
+            HomeScreen(
+                viewModel = homeViewModel,
+                onNavigateToSettings = {
+                    navController.navigate("settings")
+                }
+            )
+        }
+        composable("settings") {
+            SettingsScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

@@ -30,9 +30,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, onNavigateToSettings: () -> Unit) {
-    val state by viewModel.uiState.collectAsState()
-    val pairedDevices by viewModel.pairedDevices.collectAsState(initial = emptyList())
+fun HomeScreen(homeViewModel: HomeViewModel, onNavigateToSettings: () -> Unit) {
+    val state by homeViewModel.uiState.collectAsState()
+    val pairedDevices by homeViewModel.pairedDevices.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var keyboardText by remember { mutableStateOf("") }
     var isUpdating by remember { mutableStateOf(false) }
