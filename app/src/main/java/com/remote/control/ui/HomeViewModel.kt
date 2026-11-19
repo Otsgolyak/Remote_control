@@ -62,19 +62,6 @@ data class RemoteState(
     val mouseSensitivity: Float = 1.5f,
     val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
 )
-...
-    fun setSensitivity(value: Float) {
-        _uiState.value = _uiState.value.copy(mouseSensitivity = value)
-    }
-
-    fun updateCursor(dx: Float, dy: Float) {
-        val current = _uiState.value.cursorPosition
-        val sensitivity = _uiState.value.mouseSensitivity
-        val newX = (current.first + dx * sensitivity).coerceIn(-500f, 500f)
-        val newY = (current.second + dy * sensitivity).coerceIn(-500f, 500f)
-        _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
-        onTouchpadMove(dx, dy)
-    }
 
 class HomeViewModel(
     private val repository: DeviceRepository,
@@ -171,6 +158,19 @@ class HomeViewModel(
         }
 
         startDiscovery()
+    }
+
+    fun setSensitivity(value: Float) {
+        _uiState.value = _uiState.value.copy(mouseSensitivity = value)
+    }
+
+    fun updateCursor(dx: Float, dy: Float) {
+        val current = _uiState.value.cursorPosition
+        val sensitivity = _uiState.value.mouseSensitivity
+        val newX = (current.first + dx * sensitivity).coerceIn(-500f, 500f)
+        val newY = (current.second + dy * sensitivity).coerceIn(-500f, 500f)
+        _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
+        onTouchpadMove(dx, dy)
     }
 
     fun startDiscovery() {
