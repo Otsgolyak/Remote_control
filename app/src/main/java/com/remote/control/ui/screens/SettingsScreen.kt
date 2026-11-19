@@ -90,14 +90,19 @@ fun SettingsScreen(
             Button(
                 enabled = !isUpdating,
                 onClick = {
-                    isUpdating = true
-                    Toast.makeText(context, "Скачивание новой версии с GitHub...", Toast.LENGTH_SHORT).show()
-                    scope.launch {
-                        val ok = updateRepository.checkForUpdates()
-                        isUpdating = false
-                        if (!ok) {
-                            Toast.makeText(context, "Ошибка скачивания обновления", Toast.LENGTH_SHORT).show()
+                    if (updateRepository.canInstall()) {
+                        isUpdating = true
+                        Toast.makeText(context, "Скачивание новой версии с GitHub...", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val ok = updateRepository.checkForUpdates()
+                            isUpdating = false
+                            if (!ok) {
+                                Toast.makeText(context, "Ошибка скачивания обновления", Toast.LENGTH_SHORT).show()
+                            }
                         }
+                    } else {
+                        Toast.makeText(context, "Разрешите установку в настройках", Toast.LENGTH_LONG).show()
+                        updateRepository.requestInstallPermission(context as android.app.Activity)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

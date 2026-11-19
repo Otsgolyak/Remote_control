@@ -212,14 +212,19 @@ fun HomeScreen(
                         enabled = !isUpdating,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            isUpdating = true
-                            Toast.makeText(context, "Скачивание обновления APK...", Toast.LENGTH_SHORT).show()
-                            scope.launch {
-                                val ok = updateRepository.checkForUpdates()
-                                isUpdating = false
-                                if (!ok) {
-                                    Toast.makeText(context, "Ошибка загрузки обновления", Toast.LENGTH_SHORT).show()
+                            if (updateRepository.canInstall()) {
+                                isUpdating = true
+                                Toast.makeText(context, "Скачивание обновления APK...", Toast.LENGTH_SHORT).show()
+                                scope.launch {
+                                    val ok = updateRepository.checkForUpdates()
+                                    isUpdating = false
+                                    if (!ok) {
+                                        Toast.makeText(context, "Ошибка загрузки обновления", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
+                            } else {
+                                Toast.makeText(context, "Разрешите установку в настройках", Toast.LENGTH_LONG).show()
+                                updateRepository.requestInstallPermission(context as android.app.Activity)
                             }
                         }
                     ) {
