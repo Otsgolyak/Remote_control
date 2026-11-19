@@ -30,8 +30,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel) {
+fun HomeScreen(viewModel: HomeViewModel, onNavigateToSettings: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
+    val pairedDevices by viewModel.pairedDevices.collectAsState(initial = emptyList())
     var selectedTab by remember { mutableIntStateOf(0) }
     var keyboardText by remember { mutableStateOf("") }
     var isUpdating by remember { mutableStateOf(false) }
@@ -73,12 +74,23 @@ fun HomeScreen(viewModel: HomeViewModel) {
                         )
                         Text(
                             text = state.status,
-                            color = Color(0xFF34C759),
+                            color = if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30),
                             fontSize = 12.sp
                         )
                     }
                 },
                 actions = {
+                    // Indicator
+                    Icon(
+                        Icons.Default.Circle,
+                        contentDescription = "Status",
+                        tint = if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
+                    }
                     IconButton(
                         enabled = !isUpdating,
                         onClick = {
