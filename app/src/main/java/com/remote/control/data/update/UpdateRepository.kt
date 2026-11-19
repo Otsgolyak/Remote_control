@@ -18,6 +18,8 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 interface UpdateRepository {
+    fun canInstall(): Boolean
+    fun requestInstallPermission(ctx: Context)
     suspend fun getLatestReleaseVersion(): String?
     suspend fun downloadUpdate(url: String, outputFile: File): Boolean
     fun installUpdate(context: Context, apkFile: File)
@@ -34,6 +36,27 @@ class UpdateRepositoryImpl(
         .followSslRedirects(true)
         .build()
 ) : UpdateRepository {
+
+    override fun canInstall(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    override fun requestInstallPermission(ctx: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Logger.log("Открытие настроек разрешения REQUEST_INSTALL_PACKAGES")
+            val permIntent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${ctx.packageName}")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ctx.startActivity(permIntent)
+        }
+    }
 
     override fun cleanupOldApks(context: Context) {
         runCatching {
@@ -98,15 +121,9 @@ class UpdateRepositoryImpl(
 
     override fun installUpdate(context: Context, apkFile: File) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-                Logger.log("Запрос разрешения REQUEST_INSTALL_PACKAGES у пользователя")
-                val permIntent = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")
-                ).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(permIntent)
+            if (!canInstall()) {
+                requestInstallPermission(context)
+                return
             }
 
             val uri = FileProvider.getUriForFile(
