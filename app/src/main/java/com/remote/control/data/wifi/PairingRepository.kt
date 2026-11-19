@@ -8,11 +8,19 @@ interface PairingRepository {
 
 class PairingRepositoryImpl : PairingRepository {
     override fun startPairing(ip: String) {
-        // TODO: Implement pairing logic
+        try {
+            // TODO: Implement pairing logic
+        } catch (e: Exception) {
+            com.remote.control.utils.Logger.log("Pairing error: ${e.message}")
+        }
     }
 
     override fun confirmPin(pin: String) {
-        // TODO: Implement PIN confirmation logic
+        try {
+            // TODO: Implement PIN confirmation logic
+        } catch (e: Exception) {
+            com.remote.control.utils.Logger.log("PIN confirmation error: ${e.message}")
+        }
     }
 
     override fun getKeyPair(): java.security.KeyPair {

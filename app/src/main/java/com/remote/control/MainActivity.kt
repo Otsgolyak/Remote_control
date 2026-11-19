@@ -24,6 +24,7 @@ import com.remote.control.ui.HomeViewModelFactory
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.remote.control.utils.Logger.appContext = applicationContext
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(

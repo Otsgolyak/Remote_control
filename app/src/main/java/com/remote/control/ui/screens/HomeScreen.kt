@@ -272,7 +272,7 @@ fun HomeScreen(homeViewModel: HomeViewModel, onNavigateToSettings: () -> Unit) {
                 Button(onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
                     Text("VOL +")
                 }
-                IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
+                IconButton(onClick = { (context as? android.app.Activity)?.finish() }) {
                     Icon(Icons.Default.Input, contentDescription = "Source", tint = Color.White)
                 }
             }
