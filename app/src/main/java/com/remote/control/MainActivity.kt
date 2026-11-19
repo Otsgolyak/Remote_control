@@ -58,7 +58,7 @@ fun AppNavigation() {
         }
         composable("home") {
             HomeScreen(
-                viewModel = homeViewModel,
+                homeViewModel = homeViewModel,
                 onNavigateToSettings = {
                     navController.navigate("settings")
                 }
