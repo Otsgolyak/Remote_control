@@ -181,6 +181,31 @@ class ConnectionManagerImpl(
         sendMessage(msg)
     }
 
+    override suspend fun sendText(text: String) {
+        Logger.log("Отправка текста: $text")
+        val msg = RemoteMessage.newBuilder()
+            .setRemoteText(
+                remote.RemoteText.newBuilder()
+                    .setText(text)
+                    .build()
+            )
+            .build()
+        sendMessage(msg)
+    }
+
+    override suspend fun sendPointer(x: Float, y: Float) {
+        // Мышь работает через RemotePointer, но упрощенно отправим как движение
+        val msg = RemoteMessage.newBuilder()
+            .setRemotePointer(
+                remote.RemotePointer.newBuilder()
+                    .setX(x)
+                    .setY(y)
+                    .build()
+            )
+            .build()
+        sendMessage(msg)
+    }
+
     override suspend fun send(data: ByteArray) {
         withContext(Dispatchers.IO) {
             try {

@@ -72,9 +72,19 @@ class DeviceRepository(private val context: Context) {
         }
     }
 
-    suspend fun setSelectedDevice(ip: String) {
+    suspend fun renameDevice(ip: String, newName: String) {
         context.dataStore.edit { preferences ->
-            preferences[SELECTED_IP_KEY] = ip
+            val json = preferences[DEVICES_KEY] ?: "[]"
+            val currentList = try {
+                Json.decodeFromString<List<Device>>(json).toMutableList()
+            } catch (e: Exception) {
+                mutableListOf()
+            }
+            val idx = currentList.indexOfFirst { it.ip == ip }
+            if (idx >= 0) {
+                currentList[idx] = currentList[idx].copy(name = newName)
+                preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+            }
         }
     }
 }
