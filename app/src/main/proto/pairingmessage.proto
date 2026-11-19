@@ -1,5 +1,4 @@
 // Copied from https://github.com/louis49/androidtv-remote/blob/main/src/pairing/pairingmessage.proto
-// Comments on RemoteKeyCode enum added from https://android.googlesource.com/platform/frameworks/native/+/master/include/android/keycodes.h
 
 syntax = "proto3";
 package pairing;
@@ -9,7 +8,6 @@ enum RoleType {
   ROLE_TYPE_UNKNOWN = 0;
   ROLE_TYPE_INPUT = 1;
   ROLE_TYPE_OUTPUT = 2;
-  UNRECOGNIZED = -1;
 }
 
 message PairingRequest {
@@ -28,7 +26,6 @@ message PairingEncoding {
       ENCODING_TYPE_NUMERIC = 2;
       ENCODING_TYPE_HEXADECIMAL = 3;
       ENCODING_TYPE_QRCODE = 4;
-      UNRECOGNIZED = -1;
   }
   EncodingType type = 1;
   uint32 symbol_length = 2;
@@ -64,7 +61,6 @@ message PairingMessage {
     STATUS_ERROR = 400;
     STATUS_BAD_CONFIGURATION = 401;
     STATUS_BAD_SECRET = 402;
-    UNRECOGNIZED = -1;
   }
   int32 protocol_version = 1;
   Status status = 2;
