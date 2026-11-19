@@ -238,10 +238,27 @@ class AirMouseController(context: Context) : SensorEventListener {
         }
     }
 
-    fun makeDiscoverable(activity: android.app.Activity) {
-        val intent = android.content.Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-            putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
+    fun sendClick(leftButton: Boolean = true) {
+        val hid = hidDevice
+        val host = connectedHost
+        if (hid != null && host != null && _isBtConnected.value) {
+            val btnMask = if (leftButton) 1 else 2
+            hid.sendReport(host, 1, byteArrayOf(btnMask.toByte(), 0, 0, 0))
+            hid.sendReport(host, 1, byteArrayOf(0, 0, 0, 0))
         }
-        activity.startActivity(intent)
-        Logger.log("AirMouse: Запрос режима обнаружения (120с)")
     }
+
+    fun makeDiscoverable(context: Context) {
+        try {
+            val intent = android.content.Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            Logger.log("AirMouse: Запрос видимости Bluetooth (300 сек) отправлен системе")
+        } catch (e: Exception) {
+            Logger.log("AirMouse: Ошибка запроса видимости BT: ${e.message}")
+        }
+    }
+}
+
