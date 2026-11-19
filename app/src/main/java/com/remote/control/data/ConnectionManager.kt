@@ -14,6 +14,4 @@ interface ConnectionManager {
     suspend fun sendKey(keyCode: RemoteKeyCode)
     suspend fun disconnect()
     fun getSocket(): Socket?
-    suspend fun sendText(text: String)
-    suspend fun sendPointer(x: Float, y: Float)
 }

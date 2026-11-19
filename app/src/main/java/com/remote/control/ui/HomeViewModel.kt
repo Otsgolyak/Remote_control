@@ -218,11 +218,13 @@ class HomeViewModel(
         }
     }
 
-    fun dismissPinDialog() {
-        _uiState.value = _uiState.value.copy(
-            isPairingPinRequired = false,
-            pairingError = null
-        )
+    fun renameDevice(ip: String, newName: String) {
+        viewModelScope.launch {
+            repository.renameDevice(ip, newName)
+            if (_uiState.value.selectedDeviceIp == ip) {
+                _uiState.value = _uiState.value.copy(selectedDeviceName = newName)
+            }
+        }
     }
 
     fun removeSavedDevice(ip: String) {

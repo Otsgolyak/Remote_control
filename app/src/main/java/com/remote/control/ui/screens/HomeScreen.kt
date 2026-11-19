@@ -101,8 +101,9 @@ fun HomeScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            // ... shortcuts ...
+            
             // Mode Tabs
+            val tabs = listOf("D-Pad", "Air Mouse", "Keyboard")
             TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF16161C)) {
                 tabs.forEachIndexed { i, t -> Tab(selected = selectedTab == i, onClick = { selectedTab = i }, text = { Text(t, color = Color.White) }) }
             }
@@ -116,18 +117,18 @@ fun HomeScreen(
                         if (selectedTab == 1) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                homeViewModel.sendPointer(dragAmount.x, dragAmount.y)
+                                // Mouse not supported in current protocol
                             }
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedTab == 0) {
-                     // ... D-Pad implementation (omitted for brevity, assume existing) ...
+                     // ... D-Pad implementation (assume existing) ...
                 } else if (selectedTab == 2) {
                      OutlinedTextField(
                         value = keyboardText,
-                        onValueChange = { keyboardText = it; homeViewModel.sendText(it) },
+                        onValueChange = { keyboardText = it },
                         label = { Text("Ввод") }
                     )
                 }
