@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @SuppressLint("MissingPermission")
@@ -29,18 +30,21 @@ class AirMouseController(context: Context) : SensorEventListener {
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedHost: BluetoothDevice? = null
 
+    @Volatile
+    var sensitivity: Float = 1.5f
+
     private val _isBtConnected = MutableStateFlow(false)
     val isBtConnected: StateFlow<Boolean> = _isBtConnected.asStateFlow()
 
     private val _isGyroEnabled = MutableStateFlow(false)
     val isGyroEnabled: StateFlow<Boolean> = _isGyroEnabled.asStateFlow()
 
-    private val _btStatus = MutableStateFlow("BT HID не подключен")
+    private val _btStatus = MutableStateFlow("Режим Wi-Fi тачпада (Для курсора на ТВ нажмите «Курсор BT»)")
     val btStatus: StateFlow<String> = _btStatus.asStateFlow()
 
     var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
+    var onVisualCursorDelta: ((dx: Float, dy: Float) -> Unit)? = null
 
-    // Standard USB HID Mouse Report Descriptor (Buttons + X + Y + Wheel)
     private val mouseDescriptor = byteArrayOf(
         0x05.toByte(), 0x01.toByte(), // Usage Page (Generic Desktop)
         0x09.toByte(), 0x02.toByte(), // Usage (Mouse)
@@ -76,11 +80,11 @@ class AirMouseController(context: Context) : SensorEventListener {
         try {
             val adapter = bluetoothAdapter
             if (adapter == null || !adapter.isEnabled) {
-                _btStatus.value = "Bluetooth выключен"
+                _btStatus.value = "Включите Bluetooth на телефоне"
                 Logger.log("AirMouse: Bluetooth выключен или недоступен")
                 return
             }
-            _btStatus.value = "Регистрация Bluetooth HID..."
+            _btStatus.value = "Запуск Bluetooth HID мыши..."
             adapter.getProfileProxy(appContext, object : BluetoothProfile.ServiceListener {
                 override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
                     if (profile == BluetoothProfile.HID_DEVICE) {
@@ -121,13 +125,12 @@ class AirMouseController(context: Context) : SensorEventListener {
                 override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
                     Logger.log("BT HID статус регистрации: registered=$registered, device=${pluggedDevice?.name}")
                     if (registered) {
-                        _btStatus.value = "BT HID готов (Выберите телефон в Bluetooth на ТВ)"
+                        _btStatus.value = "BT готов! Сопрягите телефон и ТВ по Bluetooth для курсора на экране ТВ"
                         if (pluggedDevice != null) {
                             hid.connect(pluggedDevice)
                         } else {
-                            // Try connecting to any bonded TV device
-                            bluetoothAdapter?.bondedDevices?.firstOrNull()?.let { bonded ->
-                                Logger.log("Попытка подключения BT HID к ${bonded.name}")
+                            bluetoothAdapter?.bondedDevices?.forEach { bonded ->
+                                Logger.log("Попытка подключения BT HID мыши к ${bonded.name}")
                                 hid.connect(bonded)
                             }
                         }
@@ -139,9 +142,9 @@ class AirMouseController(context: Context) : SensorEventListener {
                     _isBtConnected.value = connected
                     connectedHost = if (connected) device else null
                     _btStatus.value = if (connected) {
-                        "BT Мышь подключена к ${device?.name ?: "ТВ"}"
+                        "Курсор на экране ТВ активен (BT: ${device?.name ?: "ТВ"})"
                     } else {
-                        "BT HID ожидает подключения"
+                        "Ожидание BT-подключения к ТВ..."
                     }
                     Logger.log("BT HID соединение с ${device?.name}: connected=$connected")
                 }
@@ -155,7 +158,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             val gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
             if (gyro != null) {
                 sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
-                Logger.log("Гироскоп Air Mouse включен")
+                Logger.log("Гироскоп Air Mouse включен (sensitivity=$sensitivity)")
             } else {
                 Logger.log("Гироскоп не найден на устройстве")
                 _btStatus.value = "Гироскоп отсутствует на телефоне"
@@ -172,31 +175,32 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type != Sensor.TYPE_GYROSCOPE || !_isGyroEnabled.value) return
-        // Gyroscope values: event.values[2] is Z (yaw -> horizontal X), event.values[0] is X (pitch -> vertical Y)
-        val dx = (-event.values[2] * 18f)
-        val dy = (-event.values[0] * 18f)
-        if (kotlin.math.abs(dx) > 0.4f || kotlin.math.abs(dy) > 0.4f) {
-            sendMouseDelta(dx, dy, 0, 0)
+        val rawDx = -event.values[2] * 14f * sensitivity
+        val rawDy = -event.values[0] * 14f * sensitivity
+        if (abs(rawDx) > 0.35f || abs(rawDy) > 0.35f) {
+            onVisualCursorDelta?.invoke(rawDx, rawDy)
+            sendMouseDelta(rawDx, rawDy, 0, 0)
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     fun sendMouseDelta(dx: Float, dy: Float, wheel: Int = 0, buttons: Int = 0) {
+        val scaledDx = dx * sensitivity
+        val scaledDy = dy * sensitivity
         val hid = hidDevice
         val host = connectedHost
         if (hid != null && host != null && _isBtConnected.value) {
-            val bx = dx.roundToInt().coerceIn(-127, 127).toByte()
-            val by = dy.roundToInt().coerceIn(-127, 127).toByte()
+            val bx = scaledDx.roundToInt().coerceIn(-127, 127).toByte()
+            val by = scaledDy.roundToInt().coerceIn(-127, 127).toByte()
             val bw = wheel.coerceIn(-127, 127).toByte()
             val report = byteArrayOf(buttons.toByte(), bx, by, bw)
             hid.sendReport(host, 1, report)
         } else {
-            // Wi-Fi fallback: accumulate touchpad swipe into D-Pad navigation impulses
-            accumX += dx
-            accumY += dy
-            val threshold = 48f
-            if (kotlin.math.abs(accumX) >= threshold || kotlin.math.abs(accumY) >= threshold) {
+            accumX += scaledDx
+            accumY += scaledDy
+            val threshold = 75f
+            if (abs(accumX) >= threshold || abs(accumY) >= threshold) {
                 onFallbackDirection?.invoke(accumX, accumY)
                 accumX = 0f
                 accumY = 0f

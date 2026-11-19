@@ -96,7 +96,10 @@ fun AppNavigation() {
             )
         }
         composable("settings") {
-            SettingsScreen(onNavigateBack = { navController.popBackStack() })
+            SettingsScreen(
+                homeViewModel = homeViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

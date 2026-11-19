@@ -57,7 +57,7 @@ data class RemoteState(
     val isVoiceActive: Boolean = false,
     val isGyroEnabled: Boolean = false,
     val isBtMouseConnected: Boolean = false,
-    val btMouseStatus: String = "Тачпад (Wi-Fi) / BT HID",
+    val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор BT HID",
     val apps: List<AppShortcut> = defaultShortcuts,
     val mouseSensitivity: Float = 1.5f,
     val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
@@ -89,6 +89,13 @@ class HomeViewModel(
             } else {
                 sendKey(if (dy > 0) RemoteKeyCode.KEYCODE_DPAD_DOWN else RemoteKeyCode.KEYCODE_DPAD_UP)
             }
+        }
+
+        airMouseController.onVisualCursorDelta = { dx, dy ->
+            val current = _uiState.value.cursorPosition
+            val newX = (current.first + dx * 0.4f).coerceIn(-120f, 120f)
+            val newY = (current.second + dy * 0.4f).coerceIn(-65f, 65f)
+            _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
         }
 
         viewModelScope.launch {
@@ -143,7 +150,6 @@ class HomeViewModel(
             }
         }
 
-        // Auto-select last saved TV on startup
         viewModelScope.launch {
             val savedList = repository.pairedDevices.firstOrNull().orEmpty()
             val lastIp = repository.selectedDeviceIp.firstOrNull() ?: savedList.firstOrNull()?.ip
@@ -161,25 +167,21 @@ class HomeViewModel(
     }
 
     fun setSensitivity(value: Float) {
+        airMouseController.sensitivity = value
         _uiState.value = _uiState.value.copy(mouseSensitivity = value)
+    }
+
+    fun resetCursorCenter() {
+        _uiState.value = _uiState.value.copy(cursorPosition = Pair(0f, 0f))
     }
 
     fun updateCursor(dx: Float, dy: Float) {
         val current = _uiState.value.cursorPosition
         val sensitivity = _uiState.value.mouseSensitivity
-        
-        // Обновляем визуальный курсор
-        val newX = (current.first + dx * sensitivity).coerceIn(-150f, 150f)
-        val newY = (current.second + dy * sensitivity).coerceIn(-150f, 150f)
+        val newX = (current.first + dx * 0.35f * sensitivity).coerceIn(-120f, 120f)
+        val newY = (current.second + dy * 0.35f * sensitivity).coerceIn(-65f, 65f)
         _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
-        
-        // Отправляем D-Pad события, если сдвиг значительный
-        val threshold = 15f / sensitivity
-        if (dx > threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_RIGHT)
-        else if (dx < -threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_LEFT)
-        
-        if (dy > threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_DOWN)
-        else if (dy < -threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_UP)
+        airMouseController.sendMouseDelta(dx, dy)
     }
 
     fun startDiscovery() {
@@ -381,30 +383,39 @@ class HomeViewModel(
     }
 
     fun sendText(text: String) {
+        if (text.isEmpty()) return
         viewModelScope.launch {
+            if (!connectionManager.isConnected.value) {
+                val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                runCatching { connectionManager.connect(ip, 6466) }
+            }
             connectionManager.sendText(text)
         }
     }
 
-    fun sendChar(ch: Char) {
+    fun sendTextAsKeys(text: String) {
+        if (text.isEmpty()) return
         viewModelScope.launch {
-            connectionManager.sendCharKey(ch)
+            for (ch in text) {
+                connectionManager.sendCharKey(ch)
+                delay(55)
+            }
         }
     }
 
     fun toggleVoice() {
         viewModelScope.launch {
+            if (!connectionManager.isConnected.value) {
+                val ip = _uiState.value.selectedDeviceIp
+                if (ip != null) {
+                    runCatching { connectionManager.connect(ip, 6466) }
+                }
+            }
             if (connectionManager.isVoiceActive.value) {
                 connectionManager.stopVoiceStream()
             } else {
                 connectionManager.startVoiceStream()
             }
-        }
-    }
-
-    fun stopVoice() {
-        viewModelScope.launch {
-            connectionManager.stopVoiceStream()
         }
     }
 

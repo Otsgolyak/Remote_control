@@ -22,14 +22,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remote.control.BuildConfig
 import com.remote.control.data.update.UpdateRepositoryImpl
+import com.remote.control.ui.HomeViewModel
 import com.remote.control.utils.Logger
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onNavigateBack: () -> Unit) {
+fun SettingsScreen(
+    homeViewModel: HomeViewModel,
+    onNavigateBack: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val state by homeViewModel.uiState.collectAsState()
     val logsText by Logger.logsFlow.collectAsState()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     var isUpdating by remember { mutableStateOf(false) }
@@ -60,6 +65,27 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                 color = Color(0xFF00E5FF),
                 fontWeight = FontWeight.Bold
             )
+
+            // Air Mouse Sensitivity Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF16161E)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Чувствительность аэромыши (Air Mouse): ${"%.1f".format(state.mouseSensitivity)}x",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Slider(
+                        value = state.mouseSensitivity,
+                        onValueChange = { homeViewModel.setSensitivity(it) },
+                        valueRange = 0.5f..3.5f
+                    )
+                }
+            }
 
             Button(
                 enabled = !isUpdating,
