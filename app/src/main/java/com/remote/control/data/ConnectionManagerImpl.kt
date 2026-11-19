@@ -42,6 +42,9 @@ class ConnectionManagerImpl(
     override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     private val _isVoiceActive = MutableStateFlow(false)
     override val isVoiceActive: StateFlow<Boolean> = _isVoiceActive.asStateFlow()
+    
+    private val _lastError = MutableStateFlow<String?>(null)
+    override val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
     override suspend fun connect(ip: String, port: Int) {
         withContext(Dispatchers.IO) {
@@ -55,8 +58,9 @@ class ConnectionManagerImpl(
                 inputStream = rawSocket.inputStream
                 outputStream = rawSocket.outputStream
                 _isConnected.value = true
+                _lastError.value = null
                 startReaderLoop()
-            } catch (e: Exception) { _isConnected.value = false; throw e }
+            } catch (e: Exception) { _isConnected.value = false; _lastError.value = e.message; throw e }
         }
     }
 
@@ -90,8 +94,16 @@ class ConnectionManagerImpl(
                     val out = outputStream ?: return@withContext
                     message.writeDelimitedTo(out)
                     out.flush()
-                } catch (e: Exception) { disconnect() }
+                } catch (e: Exception) { _lastError.value = e.message; disconnect() }
             }
+        }
+    }
+    
+    override suspend fun send(data: ByteArray) {
+        withContext(Dispatchers.IO) {
+            try {
+                sendMessage(RemoteMessage.parseFrom(data))
+            } catch (e: Exception) { _lastError.value = e.message }
         }
     }
 
@@ -134,43 +146,24 @@ class ConnectionManagerImpl(
     @SuppressLint("MissingPermission")
     override suspend fun startVoiceStream() {
         if (_isVoiceActive.value || !_isConnected.value) return
-        Logger.log("Запуск голосового ввода (KEYCODE_SEARCH)...")
         sendKey(RemoteKeyCode.KEYCODE_SEARCH)
-        delay(800) // Ждем ответа ТВ
-        
+        delay(500)
         val sid = activeVoiceSessionId ?: 1
+        sendMessage(RemoteMessage.newBuilder().setRemoteVoiceBegin(RemoteVoiceBegin.newBuilder().setSessionId(sid).build()).build())
         _isVoiceActive.value = true
         
-        voiceJob?.cancel()
         voiceJob = ioScope.launch(Dispatchers.IO) {
             try {
-                // PCM 16kHz
                 val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, 16384)
                 recorder.startRecording()
                 val buffer = ByteArray(8192)
-                
                 while (_isVoiceActive.value && isActive) {
                     val read = recorder.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        sendMessage(
-                            RemoteMessage.newBuilder()
-                                .setRemoteVoicePayload(
-                                    RemoteVoicePayload.newBuilder()
-                                        .setSessionId(sid)
-                                        .setSamples(ByteString.copyFrom(buffer, 0, read))
-                                        .build()
-                                )
-                                .build()
-                        )
-                    }
+                    if (read > 0) sendMessage(RemoteMessage.newBuilder().setRemoteVoicePayload(RemoteVoicePayload.newBuilder().setSessionId(sid).setSamples(ByteString.copyFrom(buffer, 0, read)).build()).build())
                 }
                 recorder.stop()
                 recorder.release()
-            } catch (e: Exception) {
-                Logger.log("Ошибка аудио: ${e.message}")
-            } finally {
-                _isVoiceActive.value = false
-            }
+            } catch (e: Exception) { Logger.log("Голос ошибка: ${e.message}") }
         }
     }
 
