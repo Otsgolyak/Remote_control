@@ -388,143 +388,49 @@ fun HomeScreen(
                 }
 
                 1 -> {
-                    // Air Mouse Touchpad + Gyroscope + BT HID controls
+                    // Air Mouse Touchpad + Gyroscope
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Switch(
-                                    checked = state.isGyroEnabled,
-                                    onCheckedChange = { enabled ->
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        homeViewModel.setGyroEnabled(enabled)
-                                    }
-                                )
-                                Text("Гироскоп (Air Mouse)", color = Color.White, fontSize = 13.sp)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        btPermissionLauncher.launch(
-                                            arrayOf(
-                                                Manifest.permission.BLUETOOTH_CONNECT,
-                                                Manifest.permission.BLUETOOTH_ADVERTISE
-                                            )
-                                        )
-                                    } else {
-                                        homeViewModel.connectBluetoothMouse()
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Bluetooth,
-                                    contentDescription = null,
-                                    tint = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    if (state.isBtMouseConnected) "BT Мышь OK" else "BT Мышь",
-                                    fontSize = 12.sp,
-                                    color = Color.White
-                                )
-                            }
-                        }
+                        // Sensitivity Slider
+                        Text("Чувствительность: ${"%.1f".format(state.mouseSensitivity)}", color = Color.White, fontSize = 12.sp)
+                        Slider(
+                            value = state.mouseSensitivity,
+                            onValueChange = { homeViewModel.setSensitivity(it) },
+                            valueRange = 0.5f..3.0f,
+                            modifier = Modifier.padding(horizontal = 20.dp)
+                        )
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp)
+                                .height(200.dp)
                                 .clip(RoundedCornerShape(18.dp))
                                 .border(1.5.dp, neonGradient, RoundedCornerShape(18.dp))
                                 .background(Color(0xFF14141C))
                                 .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            homeViewModel.onMouseClick(left = true)
-                                        }
-                                    )
-                                }
-                                .pointerInput(Unit) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
-                                        homeViewModel.onTouchpadMove(dragAmount.x, dragAmount.y)
+                                        homeViewModel.updateCursor(dragAmount.x, dragAmount.y)
                                     }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    Icons.Default.TouchApp,
-                                    contentDescription = null,
-                                    tint = Color(0xFF00E5FF),
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Text(
-                                    "Сенсорный тачпад (свайп = движение, тап = ОК)",
-                                    color = Color.LightGray,
-                                    fontSize = 12.sp
-                                )
-                                Text(
-                                    state.btMouseStatus,
-                                    color = Color.Gray,
-                                    fontSize = 11.sp
-                                )
-                            }
+                            // Visual Cursor
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = state.cursorPosition.first.dp, y = state.cursorPosition.second.dp)
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                            )
                         }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    homeViewModel.onMouseClick(left = true)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
-                            ) {
-                                Text("ЛКМ (OK)", color = Color.White)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    homeViewModel.onMouseScroll(1)
-                                }
-                            ) {
-                                Text("▲")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    homeViewModel.onMouseScroll(-1)
-                                }
-                            ) {
-                                Text("▼")
-                            }
-                            Button(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    homeViewModel.onMouseClick(left = false)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
-                            ) {
-                                Text("ПКМ (Назад)", color = Color.White)
-                            }
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { homeViewModel.onMouseClick(left = true) }, modifier = Modifier.weight(1f)) { Text("ЛКМ") }
+                            Button(onClick = { homeViewModel.onMouseClick(left = false) }, modifier = Modifier.weight(1f)) { Text("ПКМ") }
                         }
                     }
                 }

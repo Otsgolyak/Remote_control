@@ -321,18 +321,21 @@ class ConnectionManagerImpl(
 
     @SuppressLint("MissingPermission")
     override suspend fun startVoiceStream() {
-        if (_isVoiceActive.value) return
-        _isVoiceActive.value = true
-        Logger.log("Запуск голосового ввода (ассистент + микрофон PCM 8kHz)...")
-
-        // Trigger voice assistant on TV
+        if (_isVoiceActive.value || !_isConnected.value) return
+        
+        Logger.log("Запуск голосового ввода...")
         sendKey(RemoteKeyCode.KEYCODE_VOICE_ASSIST)
-        delay(150)
-
+        
+        // Отправляем запрос и ждем 200мс, чтобы не спамить в случае ошибки
         val beginMsg = RemoteMessage.newBuilder()
             .setRemoteVoiceBegin(RemoteVoiceBegin.getDefaultInstance())
             .build()
         sendMessage(beginMsg)
+        
+        delay(300) 
+        
+        _isVoiceActive.value = true
+        // ... (audio stream logic)
 
         voiceJob?.cancel()
         voiceJob = ioScope.launch {

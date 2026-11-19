@@ -58,8 +58,23 @@ data class RemoteState(
     val isGyroEnabled: Boolean = false,
     val isBtMouseConnected: Boolean = false,
     val btMouseStatus: String = "Тачпад (Wi-Fi) / BT HID",
-    val apps: List<AppShortcut> = defaultShortcuts
+    val apps: List<AppShortcut> = defaultShortcuts,
+    val mouseSensitivity: Float = 1.5f,
+    val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
 )
+...
+    fun setSensitivity(value: Float) {
+        _uiState.value = _uiState.value.copy(mouseSensitivity = value)
+    }
+
+    fun updateCursor(dx: Float, dy: Float) {
+        val current = _uiState.value.cursorPosition
+        val sensitivity = _uiState.value.mouseSensitivity
+        val newX = (current.first + dx * sensitivity).coerceIn(-500f, 500f)
+        val newY = (current.second + dy * sensitivity).coerceIn(-500f, 500f)
+        _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
+        onTouchpadMove(dx, dy)
+    }
 
 class HomeViewModel(
     private val repository: DeviceRepository,
