@@ -1,0 +1,216 @@
+package com.remote.control.data.bluetooth
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHidDevice
+import android.bluetooth.BluetoothHidDeviceAppSdpSettings
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import com.remote.control.utils.Logger
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.Executors
+import kotlin.math.roundToInt
+
+@SuppressLint("MissingPermission")
+class AirMouseController(context: Context) : SensorEventListener {
+    private val appContext = context.applicationContext
+    private val sensorManager = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val bluetoothManager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager?.adapter
+
+    private var hidDevice: BluetoothHidDevice? = null
+    private var connectedHost: BluetoothDevice? = null
+
+    private val _isBtConnected = MutableStateFlow(false)
+    val isBtConnected: StateFlow<Boolean> = _isBtConnected.asStateFlow()
+
+    private val _isGyroEnabled = MutableStateFlow(false)
+    val isGyroEnabled: StateFlow<Boolean> = _isGyroEnabled.asStateFlow()
+
+    private val _btStatus = MutableStateFlow("BT HID не подключен")
+    val btStatus: StateFlow<String> = _btStatus.asStateFlow()
+
+    var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
+
+    // Standard USB HID Mouse Report Descriptor (Buttons + X + Y + Wheel)
+    private val mouseDescriptor = byteArrayOf(
+        0x05.toByte(), 0x01.toByte(), // Usage Page (Generic Desktop)
+        0x09.toByte(), 0x02.toByte(), // Usage (Mouse)
+        0xA1.toByte(), 0x01.toByte(), // Collection (Application)
+        0x85.toByte(), 0x01.toByte(), //   Report ID (1)
+        0x09.toByte(), 0x01.toByte(), //   Usage (Pointer)
+        0xA1.toByte(), 0x00.toByte(), //   Collection (Physical)
+        0x05.toByte(), 0x09.toByte(), //     Usage Page (Buttons)
+        0x19.toByte(), 0x01.toByte(), //     Usage Minimum (1)
+        0x29.toByte(), 0x03.toByte(), //     Usage Maximum (3)
+        0x15.toByte(), 0x00.toByte(), //     Logical Minimum (0)
+        0x25.toByte(), 0x01.toByte(), //     Logical Maximum (1)
+        0x95.toByte(), 0x03.toByte(), //     Report Count (3)
+        0x75.toByte(), 0x01.toByte(), //     Report Size (1)
+        0x81.toByte(), 0x02.toByte(), //     Input (Data, Variable, Absolute)
+        0x95.toByte(), 0x01.toByte(), //     Report Count (1)
+        0x75.toByte(), 0x05.toByte(), //     Report Size (5)
+        0x81.toByte(), 0x01.toByte(), //     Input (Constant)
+        0x05.toByte(), 0x01.toByte(), //     Usage Page (Generic Desktop)
+        0x09.toByte(), 0x30.toByte(), //     Usage (X)
+        0x09.toByte(), 0x31.toByte(), //     Usage (Y)
+        0x09.toByte(), 0x38.toByte(), //     Usage (Wheel)
+        0x15.toByte(), 0x81.toByte(), //     Logical Minimum (-127)
+        0x25.toByte(), 0x7F.toByte(), //     Logical Maximum (127)
+        0x75.toByte(), 0x08.toByte(), //     Report Size (8)
+        0x95.toByte(), 0x03.toByte(), //     Report Count (3)
+        0x81.toByte(), 0x06.toByte(), //     Input (Data, Variable, Relative)
+        0xC0.toByte(),                //   End Collection
+        0xC0.toByte()                 // End Collection
+    )
+
+    fun initBluetoothHid() {
+        try {
+            val adapter = bluetoothAdapter
+            if (adapter == null || !adapter.isEnabled) {
+                _btStatus.value = "Bluetooth выключен"
+                Logger.log("AirMouse: Bluetooth выключен или недоступен")
+                return
+            }
+            _btStatus.value = "Регистрация Bluetooth HID..."
+            adapter.getProfileProxy(appContext, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+                    if (profile == BluetoothProfile.HID_DEVICE) {
+                        hidDevice = proxy as BluetoothHidDevice
+                        registerHidApp()
+                    }
+                }
+
+                override fun onServiceDisconnected(profile: Int) {
+                    if (profile == BluetoothProfile.HID_DEVICE) {
+                        hidDevice = null
+                        _isBtConnected.value = false
+                        _btStatus.value = "BT HID отключен"
+                    }
+                }
+            }, BluetoothProfile.HID_DEVICE)
+        } catch (e: Exception) {
+            Logger.log("Ошибка инициализации Bluetooth HID: ${e.message}")
+            _btStatus.value = "Ошибка BT: ${e.message}"
+        }
+    }
+
+    private fun registerHidApp() {
+        val hid = hidDevice ?: return
+        val sdp = BluetoothHidDeviceAppSdpSettings(
+            "Xiaomi TV Air Mouse",
+            "Android TV Remote HID Mouse",
+            "Xiaomi Remote",
+            BluetoothHidDevice.SUBCLASS1_MOUSE,
+            mouseDescriptor
+        )
+        hid.registerApp(
+            sdp,
+            null,
+            null,
+            Executors.newSingleThreadExecutor(),
+            object : BluetoothHidDevice.Callback() {
+                override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+                    Logger.log("BT HID статус регистрации: registered=$registered, device=${pluggedDevice?.name}")
+                    if (registered) {
+                        _btStatus.value = "BT HID готов (Выберите телефон в Bluetooth на ТВ)"
+                        if (pluggedDevice != null) {
+                            hid.connect(pluggedDevice)
+                        } else {
+                            // Try connecting to any bonded TV device
+                            bluetoothAdapter?.bondedDevices?.firstOrNull()?.let { bonded ->
+                                Logger.log("Попытка подключения BT HID к ${bonded.name}")
+                                hid.connect(bonded)
+                            }
+                        }
+                    }
+                }
+
+                override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
+                    val connected = state == BluetoothProfile.STATE_CONNECTED
+                    _isBtConnected.value = connected
+                    connectedHost = if (connected) device else null
+                    _btStatus.value = if (connected) {
+                        "BT Мышь подключена к ${device?.name ?: "ТВ"}"
+                    } else {
+                        "BT HID ожидает подключения"
+                    }
+                    Logger.log("BT HID соединение с ${device?.name}: connected=$connected")
+                }
+            }
+        )
+    }
+
+    fun setGyroEnabled(enabled: Boolean) {
+        _isGyroEnabled.value = enabled
+        if (enabled) {
+            val gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+            if (gyro != null) {
+                sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
+                Logger.log("Гироскоп Air Mouse включен")
+            } else {
+                Logger.log("Гироскоп не найден на устройстве")
+                _btStatus.value = "Гироскоп отсутствует на телефоне"
+                _isGyroEnabled.value = false
+            }
+        } else {
+            sensorManager.unregisterListener(this)
+            Logger.log("Гироскоп Air Mouse выключен")
+        }
+    }
+
+    private var accumX = 0f
+    private var accumY = 0f
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type != Sensor.TYPE_GYROSCOPE || !_isGyroEnabled.value) return
+        // Gyroscope values: event.values[2] is Z (yaw -> horizontal X), event.values[0] is X (pitch -> vertical Y)
+        val dx = (-event.values[2] * 18f)
+        val dy = (-event.values[0] * 18f)
+        if (kotlin.math.abs(dx) > 0.4f || kotlin.math.abs(dy) > 0.4f) {
+            sendMouseDelta(dx, dy, 0, 0)
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    fun sendMouseDelta(dx: Float, dy: Float, wheel: Int = 0, buttons: Int = 0) {
+        val hid = hidDevice
+        val host = connectedHost
+        if (hid != null && host != null && _isBtConnected.value) {
+            val bx = dx.roundToInt().coerceIn(-127, 127).toByte()
+            val by = dy.roundToInt().coerceIn(-127, 127).toByte()
+            val bw = wheel.coerceIn(-127, 127).toByte()
+            val report = byteArrayOf(buttons.toByte(), bx, by, bw)
+            hid.sendReport(host, 1, report)
+        } else {
+            // Wi-Fi fallback: accumulate touchpad swipe into D-Pad navigation impulses
+            accumX += dx
+            accumY += dy
+            val threshold = 48f
+            if (kotlin.math.abs(accumX) >= threshold || kotlin.math.abs(accumY) >= threshold) {
+                onFallbackDirection?.invoke(accumX, accumY)
+                accumX = 0f
+                accumY = 0f
+            }
+        }
+    }
+
+    fun sendClick(leftButton: Boolean = true) {
+        val hid = hidDevice
+        val host = connectedHost
+        if (hid != null && host != null && _isBtConnected.value) {
+            val btnMask = if (leftButton) 1 else 2
+            hid.sendReport(host, 1, byteArrayOf(btnMask.toByte(), 0, 0, 0))
+            hid.sendReport(host, 1, byteArrayOf(0, 0, 0, 0))
+        }
+    }
+}

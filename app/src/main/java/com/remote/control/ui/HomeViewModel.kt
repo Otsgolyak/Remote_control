@@ -3,6 +3,8 @@ package com.remote.control.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remote.control.data.ConnectionManager
+import com.remote.control.data.bluetooth.AirMouseController
+import com.remote.control.data.device.CustomShortcutData
 import com.remote.control.data.device.Device
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.wifi.DiscoveredTv
@@ -21,11 +23,23 @@ import kotlinx.coroutines.launch
 import remote.RemoteAppLinkLaunchRequest
 import remote.RemoteKeyCode
 import remote.RemoteMessage
+import kotlin.math.abs
 
 data class AppShortcut(
     val title: String,
     val deepLink: String,
-    val fallbackKey: RemoteKeyCode? = null
+    val iconName: String = "tv",
+    val fallbackKey: RemoteKeyCode? = null,
+    val isCustom: Boolean = false
+)
+
+val defaultShortcuts = listOf(
+    AppShortcut("YouTube", "https://www.youtube.com", "youtube"),
+    AppShortcut("Netflix", "https://www.netflix.com/title", "movie"),
+    AppShortcut("Prime Video", "https://app.primevideo.com", "video"),
+    AppShortcut("Браузер", "https://www.google.com", "web"),
+    AppShortcut("Настройки", "", "settings", RemoteKeyCode.KEYCODE_SETTINGS),
+    AppShortcut("Приложения", "", "apps", RemoteKeyCode.KEYCODE_ALL_APPS)
 )
 
 data class RemoteState(
@@ -40,20 +54,19 @@ data class RemoteState(
     val pendingPairingName: String = "",
     val pendingPairingIp: String = "",
     val pairingError: String? = null,
-    val apps: List<AppShortcut> = listOf(
-        AppShortcut("YouTube", "https://www.youtube.com"),
-        AppShortcut("Netflix", "https://www.netflix.com/title"),
-        AppShortcut("Prime Video", "https://app.primevideo.com"),
-        AppShortcut("Настройки ТВ", "", RemoteKeyCode.KEYCODE_SETTINGS),
-        AppShortcut("Все приложения", "", RemoteKeyCode.KEYCODE_ALL_APPS)
-    )
+    val isVoiceActive: Boolean = false,
+    val isGyroEnabled: Boolean = false,
+    val isBtMouseConnected: Boolean = false,
+    val btMouseStatus: String = "Тачпад (Wi-Fi) / BT HID",
+    val apps: List<AppShortcut> = defaultShortcuts
 )
 
 class HomeViewModel(
     private val repository: DeviceRepository,
     private val connectionManager: ConnectionManager,
     private val pairingRepository: PairingRepository,
-    private val nsdScanner: NsdScanner
+    private val nsdScanner: NsdScanner,
+    private val airMouseController: AirMouseController
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RemoteState())
@@ -68,10 +81,17 @@ class HomeViewModel(
     )
 
     init {
+        airMouseController.onFallbackDirection = { dx, dy ->
+            if (abs(dx) > abs(dy)) {
+                sendKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
+            } else {
+                sendKey(if (dy > 0) RemoteKeyCode.KEYCODE_DPAD_DOWN else RemoteKeyCode.KEYCODE_DPAD_UP)
+            }
+        }
+
         viewModelScope.launch {
             connectionManager.isConnected.collect { connected ->
                 val ip = _uiState.value.selectedDeviceIp
-                val name = _uiState.value.selectedDeviceName
                 _uiState.value = _uiState.value.copy(
                     isConnected = connected,
                     status = when {
@@ -80,6 +100,44 @@ class HomeViewModel(
                         else -> "Не подключено"
                     }
                 )
+            }
+        }
+
+        viewModelScope.launch {
+            connectionManager.isVoiceActive.collect { active ->
+                _uiState.value = _uiState.value.copy(isVoiceActive = active)
+            }
+        }
+
+        viewModelScope.launch {
+            airMouseController.isGyroEnabled.collect { gyro ->
+                _uiState.value = _uiState.value.copy(isGyroEnabled = gyro)
+            }
+        }
+
+        viewModelScope.launch {
+            airMouseController.isBtConnected.collect { btConn ->
+                _uiState.value = _uiState.value.copy(isBtMouseConnected = btConn)
+            }
+        }
+
+        viewModelScope.launch {
+            airMouseController.btStatus.collect { status ->
+                _uiState.value = _uiState.value.copy(btMouseStatus = status)
+            }
+        }
+
+        viewModelScope.launch {
+            repository.customShortcuts.collect { customList ->
+                val mapped = customList.map {
+                    AppShortcut(
+                        title = it.title,
+                        deepLink = it.deepLink,
+                        iconName = it.iconName,
+                        isCustom = true
+                    )
+                }
+                _uiState.value = _uiState.value.copy(apps = defaultShortcuts + mapped)
             }
         }
 
@@ -138,7 +196,6 @@ class HomeViewModel(
                     )
                     onConnected()
                 } else {
-                    // TV closed socket -> requires pairing on 6467
                     Logger.log("ТВ ${device.ip} требует сопряжения по PIN-коду, запуск Pairing...")
                     initiatePairing(device.name, device.ip)
                 }
@@ -218,12 +275,22 @@ class HomeViewModel(
         }
     }
 
+    fun dismissPinDialog() {
+        _uiState.value = _uiState.value.copy(
+            isPairingPinRequired = false,
+            pairingError = null
+        )
+    }
+
     fun renameDevice(ip: String, newName: String) {
+        val clean = newName.trim()
+        if (ip.isBlank() || clean.isBlank()) return
         viewModelScope.launch {
-            repository.renameDevice(ip, newName)
+            repository.renameDevice(ip, clean)
             if (_uiState.value.selectedDeviceIp == ip) {
-                _uiState.value = _uiState.value.copy(selectedDeviceName = newName)
+                _uiState.value = _uiState.value.copy(selectedDeviceName = clean)
             }
+            Logger.log("ТВ ($ip) переименован в \"$clean\"")
         }
     }
 
@@ -241,6 +308,38 @@ class HomeViewModel(
         }
     }
 
+    fun addCustomShortcut(title: String, deepLink: String, iconName: String) {
+        val cleanTitle = title.trim()
+        val cleanLink = deepLink.trim()
+        if (cleanTitle.isEmpty() || cleanLink.isEmpty()) return
+        viewModelScope.launch {
+            val formattedLink = if (
+                !cleanLink.startsWith("http://") &&
+                !cleanLink.startsWith("https://") &&
+                !cleanLink.contains("://")
+            ) {
+                "https://$cleanLink"
+            } else {
+                cleanLink
+            }
+            repository.addCustomShortcut(
+                CustomShortcutData(
+                    title = cleanTitle,
+                    deepLink = formattedLink,
+                    iconName = iconName
+                )
+            )
+            Logger.log("Добавлен новый ярлык приложения: $cleanTitle -> $formattedLink")
+        }
+    }
+
+    fun removeCustomShortcut(title: String) {
+        viewModelScope.launch {
+            repository.removeCustomShortcut(title)
+            Logger.log("Удален ярлык приложения: $title")
+        }
+    }
+
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             if (!connectionManager.isConnected.value) {
@@ -254,6 +353,62 @@ class HomeViewModel(
                 }
             }
             connectionManager.sendKey(keyCode)
+        }
+    }
+
+    fun sendText(text: String) {
+        viewModelScope.launch {
+            connectionManager.sendText(text)
+        }
+    }
+
+    fun sendChar(ch: Char) {
+        viewModelScope.launch {
+            connectionManager.sendCharKey(ch)
+        }
+    }
+
+    fun toggleVoice() {
+        viewModelScope.launch {
+            if (connectionManager.isVoiceActive.value) {
+                connectionManager.stopVoiceStream()
+            } else {
+                connectionManager.startVoiceStream()
+            }
+        }
+    }
+
+    fun stopVoice() {
+        viewModelScope.launch {
+            connectionManager.stopVoiceStream()
+        }
+    }
+
+    fun connectBluetoothMouse() {
+        airMouseController.initBluetoothHid()
+    }
+
+    fun setGyroEnabled(enabled: Boolean) {
+        airMouseController.setGyroEnabled(enabled)
+    }
+
+    fun onTouchpadMove(dx: Float, dy: Float) {
+        airMouseController.sendMouseDelta(dx, dy)
+    }
+
+    fun onMouseClick(left: Boolean) {
+        if (airMouseController.isBtConnected.value) {
+            airMouseController.sendClick(left)
+        } else {
+            sendKey(if (left) RemoteKeyCode.KEYCODE_DPAD_CENTER else RemoteKeyCode.KEYCODE_BACK)
+        }
+    }
+
+    fun onMouseScroll(wheel: Int) {
+        if (airMouseController.isBtConnected.value) {
+            airMouseController.sendMouseDelta(0f, 0f, wheel = wheel)
+        } else {
+            sendKey(if (wheel > 0) RemoteKeyCode.KEYCODE_DPAD_UP else RemoteKeyCode.KEYCODE_DPAD_DOWN)
         }
     }
 

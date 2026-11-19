@@ -7,9 +7,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -18,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.remote.control.data.ConnectionManagerImpl
+import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.update.UpdateRepositoryImpl
 import com.remote.control.data.wifi.NsdScanner
@@ -60,18 +58,17 @@ fun AppNavigation() {
     val pairingRepository = remember { PairingRepositoryImpl() }
     val connectionManager = remember { ConnectionManagerImpl(pairingRepository) }
     val nsdScanner = remember { NsdScanner(context) }
+    val airMouseController = remember { AirMouseController(context) }
     val viewModelFactory = remember {
-        HomeViewModelFactory(repository, connectionManager, pairingRepository, nsdScanner)
+        HomeViewModelFactory(
+            repository,
+            connectionManager,
+            pairingRepository,
+            nsdScanner,
+            airMouseController
+        )
     }
     val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
-    val savedDevices by homeViewModel.pairedDevices.collectAsState()
-
-    // Automatically open remote screen if at least one paired TV is already saved
-    LaunchedEffect(savedDevices.size) {
-        if (savedDevices.isNotEmpty() && navController.currentDestination?.route == "pairing") {
-            // Stay on pairing only if user explicitly navigated there or no devices saved initially
-        }
-    }
 
     NavHost(navController = navController, startDestination = "pairing") {
         composable("pairing") {

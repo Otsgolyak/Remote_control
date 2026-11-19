@@ -1,6 +1,5 @@
 package com.remote.control.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,6 +32,9 @@ fun PairingScreen(
     var manualIp by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("Xiaomi TV") }
     var pinCode by remember { mutableStateOf("") }
+
+    var deviceToRename by remember { mutableStateOf<Device?>(null) }
+    var renameText by remember { mutableStateOf("") }
 
     Scaffold(
         containerColor = Color(0xFF0A0A0C),
@@ -134,13 +136,14 @@ fun PairingScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
                                     Icons.Default.Tv,
@@ -152,7 +155,15 @@ fun PairingScreen(
                                     Text("IP: ${device.ip}", color = Color.Gray, fontSize = 12.sp)
                                 }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        renameText = device.name
+                                        deviceToRename = device
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Переименовать", tint = Color(0xFF00E5FF))
+                                }
                                 TextButton(
                                     onClick = {
                                         homeViewModel.initiatePairing(device.name, device.ip)
@@ -222,7 +233,14 @@ fun PairingScreen(
                             .fillMaxWidth()
                             .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(12.dp))
                             .clickable {
-                                homeViewModel.initiatePairing(tv.name, tv.ip)
+                                val existing = savedDevices.find { it.ip == tv.ip }
+                                if (existing != null) {
+                                    homeViewModel.connectToSavedDevice(existing) {
+                                        onNavigateToHome()
+                                    }
+                                } else {
+                                    homeViewModel.initiatePairing(tv.name, tv.ip)
+                                }
                             }
                     ) {
                         Row(
@@ -243,7 +261,16 @@ fun PairingScreen(
                                 }
                             }
                             Button(
-                                onClick = { homeViewModel.initiatePairing(tv.name, tv.ip) },
+                                onClick = {
+                                    val existing = savedDevices.find { it.ip == tv.ip }
+                                    if (existing != null) {
+                                        homeViewModel.connectToSavedDevice(existing) {
+                                            onNavigateToHome()
+                                        }
+                                    } else {
+                                        homeViewModel.initiatePairing(tv.name, tv.ip)
+                                    }
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
                             ) {
                                 Text("Подключить", color = Color.White)
@@ -279,7 +306,7 @@ fun PairingScreen(
                         OutlinedTextField(
                             value = manualIp,
                             onValueChange = { manualIp = it },
-                            label = { Text("IP-адрес ТВ (например 192.168.1.50)") },
+                            label = { Text("IP-адрес ТВ (например 192.168.68.116)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -317,14 +344,52 @@ fun PairingScreen(
             }
 
             item {
-                TextButton(
+                Button(
                     onClick = onNavigateToHome,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
                 ) {
-                    Text("Перейти к экрану пульта ->", color = Color(0xFF00E5FF))
+                    Text("Открыть пульт управления ->", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                 }
             }
         }
+    }
+
+    // Rename Saved TV Dialog
+    deviceToRename?.let { dev ->
+        AlertDialog(
+            onDismissRequest = { deviceToRename = null },
+            containerColor = Color(0xFF1A1A24),
+            title = { Text("Переименовать ТВ", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("IP: ${dev.ip}", color = Color.Gray, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("Новое название ТВ") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        homeViewModel.renameDevice(dev.ip, renameText)
+                        deviceToRename = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                ) {
+                    Text("Сохранить", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deviceToRename = null }) {
+                    Text("Отмена", color = Color.Gray)
+                }
+            }
+        )
     }
 
     // PIN Code Entry Dialog when TV displays the 6-char HEX PIN
@@ -349,7 +414,7 @@ fun PairingScreen(
                     OutlinedTextField(
                         value = pinCode,
                         onValueChange = { pinCode = it.uppercase().take(6) },
-                        label = { Text("6-значный PIN (например A1B2C3)") },
+                        label = { Text("6-значный PIN (например 902E60)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

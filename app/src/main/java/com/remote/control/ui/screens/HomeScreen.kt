@@ -1,11 +1,17 @@
 package com.remote.control.ui.screens
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -20,14 +26,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.remote.control.data.update.UpdateRepositoryImpl
+import com.remote.control.ui.AppShortcut
 import com.remote.control.ui.HomeViewModel
 import kotlinx.coroutines.launch
 import remote.RemoteKeyCode
@@ -42,13 +52,37 @@ fun HomeScreen(
     val state by homeViewModel.uiState.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var keyboardText by remember { mutableStateOf("") }
+    var isUpdating by remember { mutableStateOf(false) }
+
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var newTvName by remember { mutableStateOf("") }
+
+    var showAddShortcutDialog by remember { mutableStateOf(false) }
+    var shortcutTitle by remember { mutableStateOf("") }
+    var shortcutUrl by remember { mutableStateOf("") }
+    var shortcutIcon by remember { mutableStateOf("star") }
+
+    val tabs = listOf("D-Pad", "Air Mouse", "Клавиатура")
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    
-    // Dialog state for renaming
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("") }
+    val updateRepository = remember { UpdateRepositoryImpl(context) }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            homeViewModel.toggleVoice()
+        } else {
+            Toast.makeText(context, "Разрешите доступ к микрофону для голосового поиска", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        homeViewModel.connectBluetoothMouse()
+    }
 
     val neonGradient = Brush.linearGradient(
         colors = listOf(Color(0xFFFF6D00), Color(0xFF00E5FF))
@@ -59,79 +93,769 @@ fun HomeScreen(
         homeViewModel.sendKey(keyCode)
     }
 
-    if (showRenameDialog) {
-        AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = { Text("Переименовать ТВ") },
-            text = {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    label = { Text("Новое имя") }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    homeViewModel.renameDevice(state.selectedDeviceIp ?: "", newName)
-                    showRenameDialog = false
-                }) { Text("ОК") }
-            }
-        )
+    fun iconForShortcut(iconName: String): ImageVector {
+        return when (iconName) {
+            "youtube" -> Icons.Default.PlayCircle
+            "movie" -> Icons.Default.Movie
+            "video" -> Icons.Default.LiveTv
+            "web" -> Icons.Default.Language
+            "settings" -> Icons.Default.Settings
+            "apps" -> Icons.Default.Apps
+            "music" -> Icons.Default.MusicNote
+            else -> Icons.Default.Star
+        }
+    }
+
+    fun colorForShortcut(iconName: String): Color {
+        return when (iconName) {
+            "youtube" -> Color(0xFFFF3B30)
+            "movie" -> Color(0xFFE50914)
+            "video" -> Color(0xFF00A8E1)
+            "web" -> Color(0xFF34C759)
+            "settings" -> Color(0xFF00E5FF)
+            "apps" -> Color(0xFFFF9F0A)
+            else -> Color(0xFFFF6D00)
+        }
     }
 
     Scaffold(
         containerColor = Color(0xFF0A0A0C),
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121216)),
-                title = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { showRenameDialog = true }
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF121216)
+                ),
+                navigationIcon = {
+                    IconButton(
+                        onClick = { pressKey(RemoteKeyCode.KEYCODE_POWER) }
                     ) {
-                        Text(state.selectedDeviceName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(state.status, color = if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30), fontSize = 11.sp)
+                        Icon(
+                            Icons.Default.PowerSettingsNew,
+                            contentDescription = "Power",
+                            tint = Color(0xFFFF3B30)
+                        )
+                    }
+                },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.Start,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onNavigateToPairing() }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = state.selectedDeviceName,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Выбрать ТВ",
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30))
+                                )
+                                Text(
+                                    text = state.status,
+                                    color = if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (state.selectedDeviceIp != null) {
+                            IconButton(
+                                onClick = {
+                                    newTvName = state.selectedDeviceName
+                                    showRenameDialog = true
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Переименовать ТВ",
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, "Settings", tint = Color.White) }
-                    IconButton(onClick = { (context as? Activity)?.finishAffinity() }) { Icon(Icons.Default.ExitToApp, "Exit", tint = Color(0xFFFF453A)) }
+                    IconButton(onClick = onNavigateToPairing) {
+                        Icon(Icons.Default.Tv, contentDescription = "Список ТВ", tint = Color(0xFF00E5FF))
+                    }
+                    IconButton(
+                        enabled = !isUpdating,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            isUpdating = true
+                            Toast.makeText(context, "Скачивание обновления APK...", Toast.LENGTH_SHORT).show()
+                            scope.launch {
+                                val ok = updateRepository.checkForUpdates()
+                                isUpdating = false
+                                if (!ok) {
+                                    Toast.makeText(context, "Ошибка загрузки обновления", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.SystemUpdate,
+                            contentDescription = "Обновить APK",
+                            tint = Color(0xFFFF6D00)
+                        )
+                    }
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Color.White)
+                    }
                 }
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            
-            // Mode Tabs
-            val tabs = listOf("D-Pad", "Air Mouse", "Keyboard")
-            TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF16161C)) {
-                tabs.forEachIndexed { i, t -> Tab(selected = selectedTab == i, onClick = { selectedTab = i }, text = { Text(t, color = Color.White) }) }
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(250.dp)
-                    .border(2.dp, neonGradient, CircleShape)
-                    .background(Color(0xFF14141A), CircleShape)
-                    .pointerInput(Unit) {
-                        if (selectedTab == 1) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                // Mouse not supported in current protocol
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 1. Shortcuts Row with Icons and '+' Add Button
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                if (selectedTab == 0) {
-                     // ... D-Pad implementation (assume existing) ...
-                } else if (selectedTab == 2) {
-                     OutlinedTextField(
-                        value = keyboardText,
-                        onValueChange = { keyboardText = it },
-                        label = { Text("Ввод") }
+                items(state.apps) { shortcut ->
+                    ShortcutTile(
+                        shortcut = shortcut,
+                        icon = iconForShortcut(shortcut.iconName),
+                        iconTint = colorForShortcut(shortcut.iconName),
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            homeViewModel.launchShortcut(shortcut)
+                        },
+                        onDelete = if (shortcut.isCustom) {
+                            { homeViewModel.removeCustomShortcut(shortcut.title) }
+                        } else null
                     )
                 }
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .size(width = 84.dp, height = 72.dp)
+                            .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(14.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                shortcutTitle = ""
+                                shortcutUrl = ""
+                                showAddShortcutDialog = true
+                            }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Default.AddCircleOutline,
+                                contentDescription = "Добавить",
+                                tint = Color(0xFF00E5FF),
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Добавить",
+                                color = Color(0xFF00E5FF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Mode Switcher Tabs
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color(0xFF16161C),
+                contentColor = Color(0xFF00E5FF),
+                modifier = Modifier.clip(RoundedCornerShape(12.dp))
+            ) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (selectedTab == 1 && index != 1 && state.isGyroEnabled) {
+                                homeViewModel.setGyroEnabled(false)
+                            }
+                            selectedTab = index
+                        },
+                        text = { Text(title, color = Color.White, fontSize = 13.sp) }
+                    )
+                }
+            }
+
+            // 3. Central Control Area (D-Pad / Air Mouse / Keyboard)
+            when (selectedTab) {
+                0 -> {
+                    // Circular D-Pad
+                    Box(
+                        modifier = Modifier
+                            .size(248.dp)
+                            .border(2.dp, neonGradient, CircleShape)
+                            .background(Color(0xFF14141A), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(
+                            onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_UP) },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 12.dp)
+                                .size(56.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, "Up", tint = Color.White, modifier = Modifier.size(40.dp))
+                        }
+                        IconButton(
+                            onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_DOWN) },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
+                                .size(56.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, "Down", tint = Color.White, modifier = Modifier.size(40.dp))
+                        }
+                        IconButton(
+                            onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_LEFT) },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 12.dp)
+                                .size(56.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowLeft, "Left", tint = Color.White, modifier = Modifier.size(40.dp))
+                        }
+                        IconButton(
+                            onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_RIGHT) },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 12.dp)
+                                .size(56.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowRight, "Right", tint = Color.White, modifier = Modifier.size(40.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(82.dp)
+                                .align(Alignment.Center)
+                                .clip(CircleShape)
+                                .background(Color(0xFF23232E))
+                                .border(1.5.dp, neonGradient, CircleShape)
+                                .clickable { pressKey(RemoteKeyCode.KEYCODE_DPAD_CENTER) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("OK", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                1 -> {
+                    // Air Mouse Touchpad + Gyroscope + BT HID controls
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Switch(
+                                    checked = state.isGyroEnabled,
+                                    onCheckedChange = { enabled ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        homeViewModel.setGyroEnabled(enabled)
+                                    }
+                                )
+                                Text("Гироскоп (Air Mouse)", color = Color.White, fontSize = 13.sp)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        btPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.BLUETOOTH_CONNECT,
+                                                Manifest.permission.BLUETOOTH_ADVERTISE
+                                            )
+                                        )
+                                    } else {
+                                        homeViewModel.connectBluetoothMouse()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (state.isBtMouseConnected) "BT Мышь OK" else "BT Мышь",
+                                    fontSize = 12.sp,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .border(1.5.dp, neonGradient, RoundedCornerShape(18.dp))
+                                .background(Color(0xFF14141C))
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            homeViewModel.onMouseClick(left = true)
+                                        }
+                                    )
+                                }
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        homeViewModel.onTouchpadMove(dragAmount.x, dragAmount.y)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.TouchApp,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Text(
+                                    "Сенсорный тачпад (свайп = движение, тап = ОК)",
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    state.btMouseStatus,
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    homeViewModel.onMouseClick(left = true)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                            ) {
+                                Text("ЛКМ (OK)", color = Color.White)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    homeViewModel.onMouseScroll(1)
+                                }
+                            ) {
+                                Text("▲")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    homeViewModel.onMouseScroll(-1)
+                                }
+                            ) {
+                                Text("▼")
+                            }
+                            Button(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    homeViewModel.onMouseClick(left = false)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                            ) {
+                                Text("ПКМ (Назад)", color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                2 -> {
+                    // Keyboard Tab
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.5.dp, neonGradient, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = keyboardText,
+                                onValueChange = { newValue ->
+                                    if (newValue.length == keyboardText.length + 1) {
+                                        val addedChar = newValue.last()
+                                        homeViewModel.sendChar(addedChar)
+                                    } else if (newValue.length == keyboardText.length - 1) {
+                                        homeViewModel.sendKey(RemoteKeyCode.KEYCODE_DEL)
+                                    }
+                                    keyboardText = newValue
+                                },
+                                label = { Text("Введите текст для ТВ (латиница/цифры/IME)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    if (keyboardText.isNotEmpty()) {
+                                        IconButton(onClick = { keyboardText = "" }) {
+                                            Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                                        }
+                                    }
+                                }
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        homeViewModel.sendText(keyboardText)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+                                ) {
+                                    Text("Отправить всё", color = Color.White)
+                                }
+                                Button(
+                                    onClick = { pressKey(RemoteKeyCode.KEYCODE_SEARCH) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Поиск", tint = Color(0xFF00E5FF))
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { pressKey(RemoteKeyCode.KEYCODE_DEL) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("⌫ Стереть")
+                                }
+                                OutlinedButton(
+                                    onClick = { pressKey(RemoteKeyCode.KEYCODE_SPACE) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Пробел")
+                                }
+                                Button(
+                                    onClick = { pressKey(RemoteKeyCode.KEYCODE_ENTER) },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                                ) {
+                                    Text("Enter ↵", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Navigation & Voice Row
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, neonGradient, CircleShape)
+                            .background(if (state.isVoiceActive) Color(0xFF3A1818) else Color(0xFF1F1F28))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val hasPerm = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasPerm) {
+                                    homeViewModel.toggleVoice()
+                                } else {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (state.isVoiceActive) Icons.Default.MicNone else Icons.Default.Mic,
+                            contentDescription = "Голосовой ввод",
+                            tint = if (state.isVoiceActive) Color(0xFFFF3B30) else Color(0xFF00E5FF),
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = { pressKey(RemoteKeyCode.KEYCODE_HOME) },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Default.Home, contentDescription = "Домой")
+                    }
+                }
+                if (state.isVoiceActive) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Идет передача голоса на ТВ... Нажмите микрофон для остановки",
+                        color = Color(0xFFFF6D00),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // 5. Bottom Volume, Source & Exit Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_DOWN) }) {
+                    Text("VOL -")
+                }
+                IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_MUTE) }) {
+                    Icon(Icons.Default.VolumeOff, contentDescription = "Mute", tint = Color.White)
+                }
+                Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_UP) }) {
+                    Text("VOL +")
+                }
+                IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_TV_INPUT) }) {
+                    Icon(Icons.Default.Input, contentDescription = "Источник (HDMI)", tint = Color(0xFF00E5FF))
+                }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        (context as? Activity)?.finishAffinity()
+                    }
+                ) {
+                    Icon(Icons.Default.ExitToApp, contentDescription = "Выход", tint = Color(0xFFFF453A))
+                }
+            }
+        }
+    }
+
+    // Rename TV Dialog
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            containerColor = Color(0xFF1A1A24),
+            title = { Text("Переименовать ТВ", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newTvName,
+                    onValueChange = { newTvName = it },
+                    label = { Text("Новое название ТВ") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        state.selectedDeviceIp?.let { ip ->
+                            homeViewModel.renameDevice(ip, newTvName)
+                        }
+                        showRenameDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                ) {
+                    Text("Сохранить", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Отмена", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    // Add Custom App Shortcut Dialog
+    if (showAddShortcutDialog) {
+        val presets = listOf(
+            Triple("Кинопоиск", "https://hd.kinopoisk.ru", "movie"),
+            Triple("VK Видео", "https://vkvideo.ru", "video"),
+            Triple("Rutube", "https://rutube.ru", "youtube"),
+            Triple("Twitch", "https://www.twitch.tv", "video")
+        )
+        AlertDialog(
+            onDismissRequest = { showAddShortcutDialog = false },
+            containerColor = Color(0xFF1A1A24),
+            title = { Text("Добавить приложение", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Быстрые шаблоны:", color = Color.LightGray, fontSize = 12.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(presets) { (pName, pUrl, pIcon) ->
+                            SuggestionChip(
+                                onClick = {
+                                    shortcutTitle = pName
+                                    shortcutUrl = pUrl
+                                    shortcutIcon = pIcon
+                                },
+                                label = { Text(pName, color = Color.White, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = shortcutTitle,
+                        onValueChange = { shortcutTitle = it },
+                        label = { Text("Название (например Кинопоиск)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = shortcutUrl,
+                        onValueChange = { shortcutUrl = it },
+                        label = { Text("Ссылка или DeepLink (например hd.kinopoisk.ru)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (shortcutTitle.isNotBlank() && shortcutUrl.isNotBlank()) {
+                            homeViewModel.addCustomShortcut(shortcutTitle, shortcutUrl, shortcutIcon)
+                            showAddShortcutDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                ) {
+                    Text("Добавить", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddShortcutDialog = false }) {
+                    Text("Отмена", color = Color.Gray)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ShortcutTile(
+    shortcut: AppShortcut,
+    icon: ImageVector,
+    iconTint: Color,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)?
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF181822)),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .size(width = 88.dp, height = 72.dp)
+            .border(1.dp, Color(0xFF282838), RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (onDelete != null) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Удалить ярлык",
+                    tint = Color.Gray,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(14.dp)
+                        .clickable { onDelete() }
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = shortcut.title,
+                    tint = iconTint,
+                    modifier = Modifier.size(26.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = shortcut.title,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
