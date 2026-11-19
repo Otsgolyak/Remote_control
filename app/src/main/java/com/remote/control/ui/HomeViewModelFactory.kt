@@ -2,13 +2,21 @@ package com.remote.control.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.remote.control.data.ConnectionManager
 import com.remote.control.data.device.DeviceRepository
+import com.remote.control.data.wifi.NsdScanner
+import com.remote.control.data.wifi.PairingRepository
 
-class HomeViewModelFactory(private val repository: DeviceRepository) : ViewModelProvider.Factory {
+class HomeViewModelFactory(
+    private val repository: DeviceRepository,
+    private val connectionManager: ConnectionManager,
+    private val pairingRepository: PairingRepository,
+    private val nsdScanner: NsdScanner
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return HomeViewModel(repository) as T
+            return HomeViewModel(repository, connectionManager, pairingRepository, nsdScanner) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
