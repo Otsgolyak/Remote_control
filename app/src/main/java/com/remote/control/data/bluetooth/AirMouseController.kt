@@ -173,22 +173,30 @@ class AirMouseController(context: Context) : SensorEventListener {
     private var accumX = 0f
     private var accumY = 0f
 
+    private var lastEventTime = 0L
+    private val debounceMs = 150L // Ограничение частоты событий
+
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type != Sensor.TYPE_GYROSCOPE || !_isGyroEnabled.value) return
-        val rawDx = -event.values[2] * 14f * sensitivity
-        val rawDy = -event.values[0] * 14f * sensitivity
-        if (abs(rawDx) > 0.35f || abs(rawDy) > 0.35f) {
-            // ВСЕГДА обновляем визуальный курсор
-            onVisualCursorDelta?.invoke(rawDx, rawDy)
+        
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastEventTime < debounceMs) return
+        
+        val rawDx = -event.values[2] * 8f * sensitivity
+        val rawDy = -event.values[0] * 8f * sensitivity
+        
+        if (abs(rawDx) > 1.5f || abs(rawDy) > 1.5f) {
+            lastEventTime = currentTime
             
             // Если BT мышь подключена — отправляем BT HID отчет
             if (_isBtConnected.value && connectedHost != null) {
                 sendMouseDelta(rawDx, rawDy, 0, 0)
             } else {
-                // Иначе fallback на D-Pad (Wi-Fi)
-                val threshold = 7.5f / sensitivity
-                if (abs(rawDx) > threshold || abs(rawDy) > threshold) {
-                    onFallbackDirection?.invoke(rawDx, rawDy)
+                // Иначе fallback на D-Pad (Wi-Fi) - ОГРАНИЧЕННО!
+                if (abs(rawDx) > abs(rawDy)) {
+                    onFallbackDirection?.invoke(if (rawDx > 0) 10f else -10f, 0f)
+                } else {
+                    onFallbackDirection?.invoke(0f, if (rawDy > 0) 10f else -10f)
                 }
             }
         }
