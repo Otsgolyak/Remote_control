@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import remote.RemoteConfigure
 import remote.RemoteDeviceInfo
 import remote.RemoteDirection
@@ -36,6 +38,7 @@ class ConnectionManagerImpl(
     private var outputStream: OutputStream? = null
     private var readerJob: Job? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val sendMutex = Mutex()
 
     private val _isConnected = MutableStateFlow(false)
     override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -149,17 +152,18 @@ class ConnectionManagerImpl(
         }
     }
 
-    @Synchronized
     override suspend fun sendMessage(message: RemoteMessage) {
-        withContext(Dispatchers.IO) {
-            try {
-                val out = outputStream ?: throw IllegalStateException("Нет активного соединения с ТВ")
-                message.writeDelimitedTo(out)
-                out.flush()
-            } catch (e: Exception) {
-                Logger.log("Ошибка отправки команды на ТВ: ${e.message}")
-                _lastError.value = e.message
-                disconnect()
+        sendMutex.withLock {
+            withContext(Dispatchers.IO) {
+                try {
+                    val out = outputStream ?: throw IllegalStateException("Нет активного соединения с ТВ")
+                    message.writeDelimitedTo(out)
+                    out.flush()
+                } catch (e: Exception) {
+                    Logger.log("Ошибка отправки команды на ТВ: ${e.message}")
+                    _lastError.value = e.message
+                    disconnect()
+                }
             }
         }
     }
