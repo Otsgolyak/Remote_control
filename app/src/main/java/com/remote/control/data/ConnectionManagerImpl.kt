@@ -9,6 +9,7 @@ import com.google.protobuf.ByteString
 import com.remote.control.data.wifi.PairingRepository
 import com.remote.control.utils.Logger
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,8 +32,10 @@ class ConnectionManagerImpl(
     private var outputStream: OutputStream? = null
     private var readerJob: Job? = null
     private var voiceThread: Thread? = null
+    private var voiceSenderJob: Job? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sendMutex = Mutex()
+    private val voiceChannel = Channel<ByteArray>(Channel.BUFFERED)
 
     @Volatile private var imeCounter: Int = 0
     @Volatile private var fieldCounter: Int = 0
@@ -93,9 +96,7 @@ class ConnectionManagerImpl(
 
     override suspend fun send(data: ByteArray) {
         withContext(Dispatchers.IO) {
-            try {
-                sendMessage(RemoteMessage.parseFrom(data))
-            } catch (e: Exception) { _lastError.value = e.message }
+            try { sendMessage(RemoteMessage.parseFrom(data)) } catch (e: Exception) { _lastError.value = e.message }
         }
     }
 
@@ -104,10 +105,8 @@ class ConnectionManagerImpl(
     }
 
     override suspend fun sendText(text: String) {
-        // 1. Activate
         sendMessage(RemoteMessage.newBuilder().setRemoteImeShowRequest(RemoteImeShowRequest.newBuilder().setRemoteTextFieldStatus(RemoteTextFieldStatus.newBuilder().setCounterField(fieldCounter).setValue(text).build()).build()).build())
         delay(100)
-        // 2. Insert
         val batchEdit = RemoteImeBatchEdit.newBuilder()
             .setImeCounter(imeCounter)
             .setFieldCounter(fieldCounter)
@@ -128,6 +127,13 @@ class ConnectionManagerImpl(
         val sid = activeVoiceSessionId ?: 1
         sendMessage(RemoteMessage.newBuilder().setRemoteVoiceBegin(RemoteVoiceBegin.newBuilder().setSessionId(sid).build()).build())
 
+        // Запускаем отправителя в корутине
+        voiceSenderJob = ioScope.launch(Dispatchers.IO) {
+            for (data in voiceChannel) {
+                sendMessage(RemoteMessage.newBuilder().setRemoteVoicePayload(RemoteVoicePayload.newBuilder().setSessionId(sid).setSamples(ByteString.copyFrom(data)).build()).build())
+            }
+        }
+
         voiceThread = thread(start = true, name = "VoiceStreamThread") {
             try {
                 val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, 16384)
@@ -136,12 +142,7 @@ class ConnectionManagerImpl(
                 while (_isVoiceActive.value) {
                     val read = recorder.read(buffer, 0, buffer.size)
                     if (read > 0) {
-                        runBlocking {
-                             sendMessage(RemoteMessage.newBuilder().setRemoteVoicePayload(RemoteVoicePayload.newBuilder().setSessionId(sid).setSamples(ByteString.copyFrom(buffer, 0, read)).build()).build())
-                        }
-                    } else if (read < 0) {
-                        Logger.log("Ошибка AudioRecord: $read")
-                        break
+                        voiceChannel.trySend(buffer.copyOf(read))
                     }
                 }
                 recorder.stop()
@@ -152,7 +153,8 @@ class ConnectionManagerImpl(
 
     override suspend fun stopVoiceStream() {
         _isVoiceActive.value = false
-        voiceThread?.interrupt()
+        voiceThread?.join(500)
+        voiceSenderJob?.cancel()
         voiceThread = null
         val sid = activeVoiceSessionId ?: 1
         sendMessage(RemoteMessage.newBuilder().setRemoteVoiceEnd(RemoteVoiceEnd.newBuilder().setSessionId(sid).build()).build())
@@ -161,6 +163,7 @@ class ConnectionManagerImpl(
     override suspend fun disconnect() {
         _isVoiceActive.value = false
         voiceThread?.interrupt()
+        voiceSenderJob?.cancel()
         runCatching { socket?.close() }
         socket = null
         _isConnected.value = false
