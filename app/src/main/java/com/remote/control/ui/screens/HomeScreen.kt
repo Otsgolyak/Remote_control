@@ -411,10 +411,14 @@ fun HomeScreen(
                                 .border(1.5.dp, neonGradient, RoundedCornerShape(18.dp))
                                 .background(Color(0xFF14141C))
                                 .pointerInput(Unit) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        homeViewModel.updateCursor(dragAmount.x, dragAmount.y)
-                                    }
+                                    detectDragGestures(
+                                        onDragStart = { },
+                                        onDragEnd = { },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            homeViewModel.updateCursor(dragAmount.x, dragAmount.y)
+                                        }
+                                    )
                                 },
                             contentAlignment = Alignment.Center
                         ) {

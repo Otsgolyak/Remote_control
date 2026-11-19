@@ -167,10 +167,19 @@ class HomeViewModel(
     fun updateCursor(dx: Float, dy: Float) {
         val current = _uiState.value.cursorPosition
         val sensitivity = _uiState.value.mouseSensitivity
-        val newX = (current.first + dx * sensitivity).coerceIn(-500f, 500f)
-        val newY = (current.second + dy * sensitivity).coerceIn(-500f, 500f)
+        
+        // Обновляем визуальный курсор
+        val newX = (current.first + dx * sensitivity).coerceIn(-150f, 150f)
+        val newY = (current.second + dy * sensitivity).coerceIn(-150f, 150f)
         _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
-        onTouchpadMove(dx, dy)
+        
+        // Отправляем D-Pad события, если сдвиг значительный
+        val threshold = 15f / sensitivity
+        if (dx > threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_RIGHT)
+        else if (dx < -threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_LEFT)
+        
+        if (dy > threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_DOWN)
+        else if (dy < -threshold) sendKey(RemoteKeyCode.KEYCODE_DPAD_UP)
     }
 
     fun startDiscovery() {
