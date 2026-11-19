@@ -12,46 +12,52 @@ import java.security.KeyStore
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.TrustManagerFactory
 import com.remote.control.data.wifi.PairingRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.remote.control.utils.Logger
 
 class ConnectionManagerImpl(private val pairingRepository: PairingRepository) : ConnectionManager {
     private var socket: Socket? = null
     private var outputStream: OutputStream? = null
 
+    private val _isConnected = MutableStateFlow(false)
+    override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
     override suspend fun connect(ip: String, port: Int) {
         withContext(Dispatchers.IO) {
+            Logger.log("Попытка подключения к IP: $ip, порт: $port")
             try {
                 val keyPair = pairingRepository.getKeyPair()
                 
-                // For simplicity in this implementation, we are using a self-signed approach
-                // In a real Android TV Remote Protocol v2 implementation, you would need
-                // to manage the certificates properly.
-                
                 val sslContext = SSLContext.getInstance("TLSv1.3")
-                
-                // Create KeyManager (assuming we just need a dummy structure for now as per instructions)
-                // mTLS requires a certificate chain. Since I am just creating a keypair,
-                // this is a simplified stub implementation.
                 
                 val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
                 keyStore.load(null, null)
-                // ... (Add certificate to keystore)
                 
                 val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
                 kmf.init(keyStore, null)
                 
                 val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-                tmf.init(keyStore) // Trusting self-signed for now
+                tmf.init(keyStore)
                 
                 sslContext.init(kmf.keyManagers, tmf.trustManagers, null)
                 
                 val socketFactory = sslContext.socketFactory
+                Logger.log("Создание SSL сокета...")
                 val sslSocket = socketFactory.createSocket(ip, port) as javax.net.ssl.SSLSocket
+                
+                Logger.log("Начало SSL рукопожатия...")
                 sslSocket.startHandshake()
+                Logger.log("Успех SSL рукопожатия")
                 
                 socket = sslSocket
                 outputStream = socket?.getOutputStream()
+                _isConnected.value = true
+                Logger.log("Соединение установлено успешно")
             } catch (e: Exception) {
-                com.remote.control.utils.Logger.log("Connection/SSL error: ${e.message}")
+                _isConnected.value = false
+                Logger.log("Ошибка SSL рукопожатия или подключения: ${e.message}")
                 throw e
             }
         }
@@ -67,9 +73,16 @@ class ConnectionManagerImpl(private val pairingRepository: PairingRepository) : 
 
     override suspend fun disconnect() {
         withContext(Dispatchers.IO) {
-            socket?.close()
-            socket = null
-            outputStream = null
+            try {
+                socket?.close()
+                Logger.log("Соединение разорвано")
+            } catch (e: Exception) {
+                Logger.log("Ошибка при разрыве соединения: ${e.message}")
+            } finally {
+                socket = null
+                outputStream = null
+                _isConnected.value = false
+            }
         }
     }
 

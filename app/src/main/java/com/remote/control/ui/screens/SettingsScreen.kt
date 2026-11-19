@@ -11,6 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,23 +54,31 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
             Text("App Version 1.0.0")
             Text("Developed for Android TV Remote Control")
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             
-            Button(onClick = {
-                val file = File(context.filesDir, "logs.txt")
-                if (file.exists()) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_EMAIL, arrayOf("otsgolyak@gmail.com"))
-                        putExtra(Intent.EXTRA_SUBJECT, "Remote Control Logs")
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            Button(
+                onClick = {
+                    val file = File(context.filesDir, "logs.txt")
+                    if (file.exists()) {
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "message/rfc822"
+                            putExtra(Intent.EXTRA_EMAIL, arrayOf("otsgolyak@gmail.com"))
+                            putExtra(Intent.EXTRA_SUBJECT, "Remote Control Logs")
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Send logs via"))
+                    } else {
+                        Toast.makeText(context, "Logs file not found", Toast.LENGTH_SHORT).show()
                     }
-                    context.startActivity(Intent.createChooser(intent, "Send logs via"))
-                }
-            }) {
-                Text("Send Logs")
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+            ) {
+                Text("Отправить логи", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
     }
