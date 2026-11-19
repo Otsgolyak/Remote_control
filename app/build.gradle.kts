@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.protobuf)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -87,4 +88,5 @@ dependencies {
     // Updates
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation(libs.datastore.preferences)
 }
