@@ -351,7 +351,8 @@ class ConnectionManagerImpl(
 
             voiceJob?.cancel()
             voiceJob = ioScope.launch {
-                val sampleRate = 8000
+                // 16kHz - стандарт для Google TV
+                val sampleRate = 16000
                 val channelConfig = AudioFormat.CHANNEL_IN_MONO
                 val audioFormat = AudioFormat.ENCODING_PCM_16BIT
                 val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
@@ -367,7 +368,6 @@ class ConnectionManagerImpl(
                     audioRecord = recorder
                     recorder.startRecording()
 
-                    // Android TV requires voice chunks to be at least 8 KB (8192 bytes)
                     val chunkBuffer = ByteArray(VOICE_CHUNK_MIN_SIZE)
                     while (isActive && _isVoiceActive.value) {
                         var offset = 0
@@ -375,12 +375,11 @@ class ConnectionManagerImpl(
                             val read = recorder.read(chunkBuffer, offset, VOICE_CHUNK_MIN_SIZE - offset)
                             if (read > 0) {
                                 offset += read
-                            } else {
-                                break
+                            } else if (read < 0) {
+                                break // Ошибка записи
                             }
                         }
                         if (offset > 0) {
-                            // Pad remaining bytes with 0 if stopped mid-chunk so chunk is >= 8 KB
                             if (offset < VOICE_CHUNK_MIN_SIZE) {
                                 chunkBuffer.fill(0, offset, VOICE_CHUNK_MIN_SIZE)
                             }

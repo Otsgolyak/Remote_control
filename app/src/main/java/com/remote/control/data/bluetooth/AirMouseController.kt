@@ -178,8 +178,19 @@ class AirMouseController(context: Context) : SensorEventListener {
         val rawDx = -event.values[2] * 14f * sensitivity
         val rawDy = -event.values[0] * 14f * sensitivity
         if (abs(rawDx) > 0.35f || abs(rawDy) > 0.35f) {
+            // ВСЕГДА обновляем визуальный курсор
             onVisualCursorDelta?.invoke(rawDx, rawDy)
-            sendMouseDelta(rawDx, rawDy, 0, 0)
+            
+            // Если BT мышь подключена — отправляем BT HID отчет
+            if (_isBtConnected.value && connectedHost != null) {
+                sendMouseDelta(rawDx, rawDy, 0, 0)
+            } else {
+                // Иначе fallback на D-Pad (Wi-Fi)
+                val threshold = 7.5f / sensitivity
+                if (abs(rawDx) > threshold || abs(rawDy) > threshold) {
+                    onFallbackDirection?.invoke(rawDx, rawDy)
+                }
+            }
         }
     }
 
