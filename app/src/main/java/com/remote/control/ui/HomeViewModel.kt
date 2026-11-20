@@ -366,15 +366,21 @@ class HomeViewModel(
         }
     }
 
+    private var lastReconnectAttempt = 0L
+
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp
-                if (ip != null) {
+                val now = System.currentTimeMillis()
+                
+                // Простая защита от спама переподключениями (не чаще раза в 5 секунд)
+                if (ip != null && (now - lastReconnectAttempt > 5000)) {
+                    lastReconnectAttempt = now
                     Logger.log("Переподключение к $ip перед отправкой ${keyCode.name}...")
                     runCatching { connectionManager.connect(ip, 6466) }
                 } else {
-                    Logger.log("Невозможно отправить ${keyCode.name}: ТВ не выбран")
+                    Logger.log("Пропуск переподключения (ожидание или нет IP)")
                     return@launch
                 }
             }
