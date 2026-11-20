@@ -46,17 +46,40 @@ class AirMouseController(context: Context) : SensorEventListener {
     var onVisualCursorDelta: ((dx: Float, dy: Float) -> Unit)? = null
     var onCompanionMove: ((dx: Float, dy: Float) -> Boolean)? = null
 
-    private val mouseDescriptor = byteArrayOf(
-        0x05.toByte(), 0x01.toByte(), 0x09.toByte(), 0x02.toByte(), 0xA1.toByte(), 0x01.toByte(),
-        0x85.toByte(), 0x01.toByte(), 0x09.toByte(), 0x01.toByte(), 0xA1.toByte(), 0x00.toByte(),
-        0x05.toByte(), 0x09.toByte(), 0x19.toByte(), 0x01.toByte(), 0x29.toByte(), 0x03.toByte(),
-        0x15.toByte(), 0x00.toByte(), 0x25.toByte(), 0x01.toByte(), 0x95.toByte(), 0x03.toByte(),
-        0x75.toByte(), 0x01.toByte(), 0x81.toByte(), 0x02.toByte(), 0x95.toByte(), 0x01.toByte(),
-        0x75.toByte(), 0x05.toByte(), 0x81.toByte(), 0x01.toByte(), 0x05.toByte(), 0x01.toByte(),
-        0x09.toByte(), 0x30.toByte(), 0x09.toByte(), 0x31.toByte(), 0x09.toByte(), 0x38.toByte(),
-        0x15.toByte(), 0x81.toByte(), 0x25.toByte(), 0x7F.toByte(), 0x75.toByte(), 0x08.toByte(),
-        0x95.toByte(), 0x03.toByte(), 0x81.toByte(), 0x06.toByte(), 0xC0.toByte(), 0xC0.toByte()
-    )
+    companion object {
+        val MOUSE_REPORT_DESCRIPTOR = byteArrayOf(
+            0x05, 0x01, // Usage Page (Generic Desktop)
+            0x09, 0x02, // Usage (Mouse)
+            0xa1.toByte(), 0x01, // Collection (Application)
+            0x09, 0x01, // Usage (Pointer)
+            0xa1.toByte(), 0x00, // Collection (Physical)
+            // Кнопки (ЛКМ, ПКМ, СКМ)
+            0x05, 0x09, // Usage Page (Button)
+            0x19, 0x01, // Usage Minimum (1)
+            0x29, 0x03, // Usage Maximum (3)
+            0x15, 0x00, // Logical Minimum (0)
+            0x25, 0x01, // Logical Maximum (1)
+            0x95.toByte(), 0x03, // Report Count (3)
+            0x75.toByte(), 0x01, // Report Size (1)
+            0x81.toByte(), 0x02, // Input (Data, Variable, Absolute)
+            // Отступ (Padding) 5 бит, чтобы выровнять байт
+            0x95.toByte(), 0x01, // Report Count (1)
+            0x75.toByte(), 0x05, // Report Size (5)
+            0x81.toByte(), 0x03, // Input (Constant, Variable, Absolute)
+            // Оси X, Y и колесо
+            0x05, 0x01, // Usage Page (Generic Desktop)
+            0x09, 0x30, // Usage (X)
+            0x09, 0x31, // Usage (Y)
+            0x09, 0x38, // Usage (Wheel)
+            0x15.toByte(), 0x81.toByte(), // Logical Minimum (-127)
+            0x25.toByte(), 0x7f, // Logical Maximum (127)
+            0x75.toByte(), 0x08, // Report Size (8)
+            0x95.toByte(), 0x03, // Report Count (3)
+            0x81.toByte(), 0x06, // Input (Data, Variable, Relative)
+            0xc0.toByte(), // End Collection
+            0xc0.toByte()  // End Collection
+        )
+    }
 
     fun initBluetoothHid() {
         val adapter = bluetoothAdapter
@@ -89,7 +112,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             "Android TV Remote HID Mouse",
             "Xiaomi Remote",
             BluetoothHidDevice.SUBCLASS1_MOUSE,
-            mouseDescriptor
+            MOUSE_REPORT_DESCRIPTOR
         )
         hid.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), object : BluetoothHidDevice.Callback() {
             override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
@@ -115,6 +138,11 @@ class AirMouseController(context: Context) : SensorEventListener {
                     "Ожидание BT сопряжения с ТВ"
                 }
                 Logger.log("AirMouse: BT HID state=$state (${device?.name})")
+                if (connected && device != null) {
+                    hid.sendReport(device, 0, byteArrayOf(0, 1, 1, 0))
+                    hid.sendReport(device, 0, byteArrayOf(0, -1, -1, 0))
+                    Logger.log("BT HID Мышь подключена к ${device.name}! Отправлен wake-up импульс для включения курсора на ТВ")
+                }
             }
         })
     }
@@ -188,7 +216,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             val bx = scaledDx.roundToInt().coerceIn(-127, 127).toByte()
             val by = scaledDy.roundToInt().coerceIn(-127, 127).toByte()
             val bw = wheel.coerceIn(-127, 127).toByte()
-            hid.sendReport(host, 1, byteArrayOf(buttons.toByte(), bx, by, bw))
+            hid.sendReport(host, 0, byteArrayOf(buttons.toByte(), bx, by, bw))
         } else {
             // 3. Fallback to D-Pad impulses
             accumX += scaledDx
@@ -207,9 +235,23 @@ class AirMouseController(context: Context) : SensorEventListener {
         val host = connectedHost
         if (hid != null && host != null && _isBtConnected.value) {
             val btnMask = if (leftButton) 1 else 2
-            hid.sendReport(host, 1, byteArrayOf(btnMask.toByte(), 0, 0, 0))
-            hid.sendReport(host, 1, byteArrayOf(0, 0, 0, 0))
+            hid.sendReport(host, 0, byteArrayOf(btnMask.toByte(), 0, 0, 0))
+            hid.sendReport(host, 0, byteArrayOf(0, 0, 0, 0))
         }
+    }
+
+    fun connectToDevice(device: BluetoothDevice) {
+        val hid = hidDevice
+        if (hid != null) {
+            Logger.log("AirMouse: Попытка подключения к ${device.name} (${device.address})")
+            hid.connect(device)
+        } else {
+            Logger.log("AirMouse: Невозможно подключиться к ${device.name}, BluetoothHidDevice не инициализирован")
+        }
+    }
+
+    fun getBondedDevices(): List<BluetoothDevice> {
+        return bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
     }
 
     fun makeDiscoverable(context: Context) {
