@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
 private val Context.dataStore by preferencesDataStore(name = "devices")
 
 @Serializable
-data class Device(val ip: String, val name: String)
+data class Device(val ip: String, val name: String, val isSamsung: Boolean = false)
 
 @Serializable
 data class CustomShortcutData(

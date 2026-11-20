@@ -444,37 +444,58 @@ fun HomeScreen(
                                 )
                                 Text("Гироскоп", color = Color.White, fontSize = 13.sp)
                             }
-                            Button(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        btPermissionLauncher.launch(
-                                            arrayOf(
-                                                Manifest.permission.BLUETOOTH_CONNECT,
-                                                Manifest.permission.BLUETOOTH_ADVERTISE
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        Toast.makeText(context, "Подключение/установка Wi-Fi курсора на ТВ...", Toast.LENGTH_SHORT).show()
+                                        homeViewModel.installTvCursorCompanion { msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (state.isCompanionCursorActive) Color(0xFF1E3A2B) else Color(0xFFFF6D00)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        if (state.isCompanionCursorActive) "Wi-Fi Курсор: ВКЛ" else "Курсор Wi-Fi",
+                                        fontSize = 11.sp,
+                                        color = Color.White
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            btPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.BLUETOOTH_CONNECT,
+                                                    Manifest.permission.BLUETOOTH_ADVERTISE
+                                                )
                                             )
-                                        )
-                                    } else {
-                                        homeViewModel.connectBluetoothMouse()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (state.isBtMouseConnected) Color(0xFF1E3A2B) else Color(0xFF23232E)
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Mouse,
-                                    contentDescription = null,
-                                    tint = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    if (state.isBtMouseConnected) "Курсор на ТВ: ВКЛ" else "Курсор на ТВ (BT)",
-                                    fontSize = 12.sp,
-                                    color = Color.White
-                                )
+                                        } else {
+                                            homeViewModel.makeBluetoothDiscoverable(context)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (state.isBtMouseConnected) Color(0xFF1E3A2B) else Color(0xFF23232E)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Mouse,
+                                        contentDescription = null,
+                                        tint = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        if (state.isBtMouseConnected) "BT: ВКЛ" else "BT Мышь",
+                                        fontSize = 11.sp,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
 

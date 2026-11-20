@@ -3,8 +3,10 @@ package com.remote.control.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.remote.control.data.ConnectionManager
+import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
+import com.remote.control.data.samsung.SamsungConnectionManager
 import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepository
 
@@ -13,7 +15,9 @@ class HomeViewModelFactory(
     private val connectionManager: ConnectionManager,
     private val pairingRepository: PairingRepository,
     private val nsdScanner: NsdScanner,
-    private val airMouseController: AirMouseController
+    private val airMouseController: AirMouseController,
+    private val samsungConnectionManager: SamsungConnectionManager,
+    private val tvCompanionClient: TvCompanionClient
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
@@ -23,7 +27,9 @@ class HomeViewModelFactory(
                 connectionManager,
                 pairingRepository,
                 nsdScanner,
-                airMouseController
+                airMouseController,
+                samsungConnectionManager,
+                tvCompanionClient
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")

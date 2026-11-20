@@ -3,10 +3,12 @@ package com.remote.control.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remote.control.data.ConnectionManager
+import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.CustomShortcutData
 import com.remote.control.data.device.Device
 import com.remote.control.data.device.DeviceRepository
+import com.remote.control.data.samsung.SamsungConnectionManager
 import com.remote.control.data.wifi.DiscoveredTv
 import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,6 +49,8 @@ val defaultShortcuts = listOf(
 data class RemoteState(
     val isConnected: Boolean = false,
     val isConnecting: Boolean = false,
+    val isSamsungMode: Boolean = false,
+    val isCompanionCursorActive: Boolean = false,
     val status: String = "Не подключено",
     val selectedDeviceName: String = "Xiaomi TV",
     val selectedDeviceIp: String? = null,
@@ -58,7 +63,7 @@ data class RemoteState(
     val isVoiceActive: Boolean = false,
     val isGyroEnabled: Boolean = false,
     val isBtMouseConnected: Boolean = false,
-    val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор BT HID",
+    val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор на ТВ",
     val apps: List<AppShortcut> = defaultShortcuts,
     val mouseSensitivity: Float = 1.5f,
     val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
@@ -69,7 +74,9 @@ class HomeViewModel(
     private val connectionManager: ConnectionManager,
     private val pairingRepository: PairingRepository,
     private val nsdScanner: NsdScanner,
-    private val airMouseController: AirMouseController
+    private val airMouseController: AirMouseController,
+    private val samsungConnectionManager: SamsungConnectionManager,
+    private val tvCompanionClient: TvCompanionClient
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RemoteState())
@@ -85,6 +92,15 @@ class HomeViewModel(
     )
 
     init {
+        airMouseController.onCompanionMove = { dx, dy ->
+            if (tvCompanionClient.isCompanionConnected.value) {
+                tvCompanionClient.sendMove(dx, dy)
+                true
+            } else {
+                false
+            }
+        }
+
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
                 sendKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
@@ -101,16 +117,30 @@ class HomeViewModel(
         }
 
         viewModelScope.launch {
-            connectionManager.isConnected.collect { connected ->
+            combine(
+                connectionManager.isConnected,
+                samsungConnectionManager.isConnected
+            ) { atvConn, samConn ->
+                Pair(atvConn, samConn)
+            }.collect { (atvConn, samConn) ->
+                val isSam = _uiState.value.isSamsungMode
+                val connected = if (isSam) samConn else atvConn
                 val ip = _uiState.value.selectedDeviceIp
+                val prefix = if (isSam) "Samsung Tizen" else "Android TV"
                 _uiState.value = _uiState.value.copy(
                     isConnected = connected,
                     status = when {
-                        connected && ip != null -> "Подключено ($ip)"
-                        ip != null -> "Отключено ($ip)"
+                        connected && ip != null -> "$prefix Подключено ($ip)"
+                        ip != null -> "$prefix Отключено ($ip)"
                         else -> "Не подключено"
                     }
                 )
+            }
+        }
+
+        viewModelScope.launch {
+            tvCompanionClient.isCompanionConnected.collect { compConn ->
+                _uiState.value = _uiState.value.copy(isCompanionCursorActive = compConn)
             }
         }
 
@@ -157,10 +187,6 @@ class HomeViewModel(
             val lastIp = repository.selectedDeviceIp.firstOrNull() ?: savedList.firstOrNull()?.ip
             val savedDevice = savedList.find { it.ip == lastIp } ?: savedList.firstOrNull()
             if (savedDevice != null) {
-                _uiState.value = _uiState.value.copy(
-                    selectedDeviceIp = savedDevice.ip,
-                    selectedDeviceName = savedDevice.name
-                )
                 connectToSavedDevice(savedDevice)
             }
         }
@@ -204,23 +230,48 @@ class HomeViewModel(
         }
     }
 
+    fun connectToSamsungTv(name: String, ip: String, onConnected: () -> Unit = {}) {
+        val cleanIp = ip.trim()
+        if (cleanIp.isEmpty()) return
+        val devName = name.ifBlank { "Samsung TV ($cleanIp)" }
+        viewModelScope.launch {
+            val device = Device(ip = cleanIp, name = devName, isSamsung = true)
+            repository.addDevice(device)
+            connectToSavedDevice(device, onConnected)
+        }
+    }
+
     fun connectToSavedDevice(device: Device, onConnected: () -> Unit = {}) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 selectedDeviceName = device.name,
                 selectedDeviceIp = device.ip,
+                isSamsungMode = device.isSamsung,
                 isConnecting = true,
                 pairingError = null,
                 status = "Подключение к ${device.ip}..."
             )
             repository.setSelectedDevice(device.ip)
+
+            if (device.isSamsung) {
+                connectionManager.disconnect()
+                samsungConnectionManager.connect(device.ip)
+                delay(500)
+                _uiState.value = _uiState.value.copy(isConnecting = false)
+                onConnected()
+                return@launch
+            }
+
+            samsungConnectionManager.disconnect()
+            launch { tvCompanionClient.tryConnect(device.ip) }
+
             try {
                 connectionManager.connect(device.ip, 6466)
                 delay(400)
                 if (connectionManager.isConnected.value) {
                     _uiState.value = _uiState.value.copy(
                         isConnecting = false,
-                        status = "Подключено (${device.ip})"
+                        status = "Android TV Подключено (${device.ip})"
                     )
                     onConnected()
                 } else {
@@ -241,6 +292,7 @@ class HomeViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isConnecting = true,
+                isSamsungMode = false,
                 pairingError = null,
                 pendingPairingName = name.ifBlank { "Xiaomi TV ($cleanIp)" },
                 pendingPairingIp = cleanIp,
@@ -280,12 +332,13 @@ class HomeViewModel(
             val result = pairingRepository.confirmPin(pin)
             result.fold(
                 onSuccess = {
-                    val device = Device(ip = ip, name = name)
+                    val device = Device(ip = ip, name = name, isSamsung = false)
                     repository.addDevice(device)
                     _uiState.value = _uiState.value.copy(
                         isPairingPinRequired = false,
                         selectedDeviceIp = ip,
                         selectedDeviceName = name,
+                        isSamsungMode = false,
                         status = "Сопряжено! Подключение..."
                     )
                     delay(300)
@@ -327,6 +380,8 @@ class HomeViewModel(
             repository.removeDevice(ip)
             if (_uiState.value.selectedDeviceIp == ip) {
                 connectionManager.disconnect()
+                samsungConnectionManager.disconnect()
+                tvCompanionClient.disconnect()
                 _uiState.value = _uiState.value.copy(
                     selectedDeviceIp = null,
                     selectedDeviceName = "Xiaomi TV",
@@ -370,6 +425,16 @@ class HomeViewModel(
 
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
+            if (_uiState.value.isSamsungMode) {
+                if (!samsungConnectionManager.isConnected.value) {
+                    val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                    samsungConnectionManager.connect(ip)
+                    delay(300)
+                }
+                samsungConnectionManager.sendKey(keyCode)
+                return@launch
+            }
+
             if (!connectionManager.isConnected.value) {
                 if (isConnecting.compareAndSet(false, true)) {
                     try {
@@ -392,6 +457,10 @@ class HomeViewModel(
     fun sendText(text: String) {
         if (text.isEmpty()) return
         viewModelScope.launch {
+            if (_uiState.value.isSamsungMode) {
+                samsungConnectionManager.sendText(text)
+                return@launch
+            }
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp ?: return@launch
                 runCatching { connectionManager.connect(ip, 6466) }
@@ -403,6 +472,10 @@ class HomeViewModel(
     fun sendTextAsKeys(text: String) {
         if (text.isEmpty()) return
         viewModelScope.launch {
+            if (_uiState.value.isSamsungMode) {
+                samsungConnectionManager.sendText(text)
+                return@launch
+            }
             for (ch in text) {
                 connectionManager.sendCharKey(ch)
                 delay(55)
@@ -430,6 +503,26 @@ class HomeViewModel(
         }
     }
 
+    fun installTvCursorCompanion(onResult: (String) -> Unit) {
+        val ip = _uiState.value.selectedDeviceIp
+        if (ip.isNullOrBlank()) {
+            onResult("Сначала выберите или подключите ТВ")
+            return
+        }
+        viewModelScope.launch {
+            val connected = tvCompanionClient.tryConnect(ip)
+            if (connected) {
+                onResult("Wi-Fi курсор уже запущен и подключен к ТВ!")
+                return@launch
+            }
+            val res = tvCompanionClient.installAndActivateOnTv(ip)
+            res.fold(
+                onSuccess = { msg -> onResult(msg) },
+                onFailure = { err -> onResult("Ошибка ADB ($ip:5555): включите Отладку по сети на ТВ (${err.message})") }
+            )
+        }
+    }
+
     fun connectBluetoothMouse() {
         airMouseController.initBluetoothHid()
     }
@@ -440,6 +533,10 @@ class HomeViewModel(
     }
 
     fun setGyroEnabled(enabled: Boolean) {
+        val ip = _uiState.value.selectedDeviceIp
+        if (enabled && ip != null && !_uiState.value.isSamsungMode) {
+            viewModelScope.launch { tvCompanionClient.tryConnect(ip) }
+        }
         airMouseController.setGyroEnabled(enabled)
     }
 
@@ -448,7 +545,9 @@ class HomeViewModel(
     }
 
     fun onMouseClick(left: Boolean) {
-        if (airMouseController.isBtConnected.value) {
+        if (tvCompanionClient.isCompanionConnected.value && left) {
+            tvCompanionClient.sendClick()
+        } else if (airMouseController.isBtConnected.value) {
             airMouseController.sendClick(left)
         } else {
             sendKey(if (left) RemoteKeyCode.KEYCODE_DPAD_CENTER else RemoteKeyCode.KEYCODE_BACK)
@@ -467,6 +566,10 @@ class HomeViewModel(
         viewModelScope.launch {
             if (shortcut.fallbackKey != null) {
                 sendKey(shortcut.fallbackKey)
+                return@launch
+            }
+            if (_uiState.value.isSamsungMode) {
+                samsungConnectionManager.sendSamsungKey("KEY_HOME")
                 return@launch
             }
             if (shortcut.deepLink.isNotBlank()) {

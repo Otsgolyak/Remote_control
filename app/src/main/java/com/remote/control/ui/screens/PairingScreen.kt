@@ -339,6 +339,19 @@ fun PairingScreen(
                                 Text("Уже спарен")
                             }
                         }
+                        Button(
+                            onClick = {
+                                if (manualIp.isNotBlank()) {
+                                    homeViewModel.connectToSamsungTv(manualName.ifBlank { "Samsung TV" }, manualIp) {
+                                        onNavigateToHome()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
+                        ) {
+                            Text("Подключить как Samsung Smart TV (Tizen)", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

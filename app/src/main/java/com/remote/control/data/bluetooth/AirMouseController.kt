@@ -39,11 +39,12 @@ class AirMouseController(context: Context) : SensorEventListener {
     private val _isGyroEnabled = MutableStateFlow(false)
     val isGyroEnabled: StateFlow<Boolean> = _isGyroEnabled.asStateFlow()
 
-    private val _btStatus = MutableStateFlow("Режим Wi-Fi тачпада (Для курсора на ТВ нажмите «Курсор BT»)")
+    private val _btStatus = MutableStateFlow("Режим Wi-Fi тачпада / Курсор на ТВ")
     val btStatus: StateFlow<String> = _btStatus.asStateFlow()
 
     var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
     var onVisualCursorDelta: ((dx: Float, dy: Float) -> Unit)? = null
+    var onCompanionMove: ((dx: Float, dy: Float) -> Boolean)? = null
 
     private val mouseDescriptor = byteArrayOf(
         0x05.toByte(), 0x01.toByte(), 0x09.toByte(), 0x02.toByte(), 0xA1.toByte(), 0x01.toByte(),
@@ -58,31 +59,62 @@ class AirMouseController(context: Context) : SensorEventListener {
     )
 
     fun initBluetoothHid() {
-        val adapter = bluetoothAdapter ?: return
-        if (!adapter.isEnabled) return
+        val adapter = bluetoothAdapter
+        if (adapter == null || !adapter.isEnabled) {
+            _btStatus.value = "Bluetooth выключен на телефоне"
+            Logger.log("AirMouse: Bluetooth выключен или недоступен")
+            return
+        }
 
+        _btStatus.value = "Запуск Bluetooth HID..."
         adapter.getProfileProxy(appContext, object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
                 if (profile == BluetoothProfile.HID_DEVICE) {
                     hidDevice = proxy as BluetoothHidDevice
+                    Logger.log("AirMouse: HID Service Connected")
                     registerHidApp()
                 }
             }
-            override fun onServiceDisconnected(profile: Int) { hidDevice = null }
+            override fun onServiceDisconnected(profile: Int) {
+                hidDevice = null
+                _isBtConnected.value = false
+            }
         }, BluetoothProfile.HID_DEVICE)
     }
 
     private fun registerHidApp() {
         val hid = hidDevice ?: return
-        val sdp = BluetoothHidDeviceAppSdpSettings("Xiaomi TV Air Mouse", "Android TV Remote HID Mouse", "Xiaomi Remote", BluetoothHidDevice.SUBCLASS1_MOUSE, mouseDescriptor)
+        val sdp = BluetoothHidDeviceAppSdpSettings(
+            "Xiaomi TV Air Mouse",
+            "Android TV Remote HID Mouse",
+            "Xiaomi Remote",
+            BluetoothHidDevice.SUBCLASS1_MOUSE,
+            mouseDescriptor
+        )
         hid.registerApp(sdp, null, null, Executors.newSingleThreadExecutor(), object : BluetoothHidDevice.Callback() {
             override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-                if (registered && pluggedDevice != null) hid.connect(pluggedDevice)
+                Logger.log("AirMouse: HID registered=$registered, plugged=${pluggedDevice?.name}")
+                if (registered) {
+                    if (pluggedDevice != null) {
+                        hid.connect(pluggedDevice)
+                    } else {
+                        bluetoothAdapter?.bondedDevices?.forEach { bonded ->
+                            Logger.log("AirMouse: Попытка BT HID подключения к ${bonded.name}")
+                            hid.connect(bonded)
+                        }
+                    }
+                }
             }
             override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
                 val connected = state == BluetoothProfile.STATE_CONNECTED
                 _isBtConnected.value = connected
                 connectedHost = if (connected) device else null
+                _btStatus.value = if (connected) {
+                    "BT Курсор подключен к ${device?.name ?: "ТВ"}"
+                } else {
+                    "Ожидание BT сопряжения с ТВ"
+                }
+                Logger.log("AirMouse: BT HID state=$state (${device?.name})")
             }
         })
     }
@@ -91,9 +123,13 @@ class AirMouseController(context: Context) : SensorEventListener {
         _isGyroEnabled.value = enabled
         if (enabled) {
             val gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-            if (gyro != null) sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
+            if (gyro != null) {
+                sensorManager.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
+                Logger.log("Гироскоп Air Mouse включен (sensitivity=$sensitivity)")
+            }
         } else {
             sensorManager.unregisterListener(this)
+            Logger.log("Гироскоп Air Mouse выключен")
         }
     }
 
@@ -104,18 +140,32 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type != Sensor.TYPE_GYROSCOPE || !_isGyroEnabled.value) return
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastEventTime < debounceMs) return
-        val rawDx = -event.values[2] * 8f * sensitivity
-        val rawDy = -event.values[0] * 8f * sensitivity
-        
-        if (abs(rawDx) > 1.5f || abs(rawDy) > 1.5f) {
-            lastEventTime = currentTime
+        val rawDx = -event.values[2] * 12f * sensitivity
+        val rawDy = -event.values[0] * 12f * sensitivity
+
+        if (abs(rawDx) > 0.4f || abs(rawDy) > 0.4f) {
+            onVisualCursorDelta?.invoke(rawDx, rawDy)
+
+            // 1. If Wi-Fi TV Companion Cursor is connected, move it smoothly at 60 FPS
+            if (onCompanionMove?.invoke(rawDx, rawDy) == true) {
+                return
+            }
+
+            // 2. If Bluetooth HID Mouse is connected, send HID report at 60 FPS
             if (_isBtConnected.value && connectedHost != null) {
                 sendMouseDelta(rawDx, rawDy, 0, 0)
-            } else {
-                if (abs(rawDx) > abs(rawDy)) onFallbackDirection?.invoke(if (rawDx > 0) 10f else -10f, 0f)
-                else onFallbackDirection?.invoke(0f, if (rawDy > 0) 10f else -10f)
+                return
+            }
+
+            // 3. Fallback: D-Pad step every 150ms
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastEventTime >= debounceMs && (abs(rawDx) > 2.2f || abs(rawDy) > 2.2f)) {
+                lastEventTime = currentTime
+                if (abs(rawDx) > abs(rawDy)) {
+                    onFallbackDirection?.invoke(if (rawDx > 0) 10f else -10f, 0f)
+                } else {
+                    onFallbackDirection?.invoke(0f, if (rawDy > 0) 10f else -10f)
+                }
             }
         }
     }
@@ -125,15 +175,22 @@ class AirMouseController(context: Context) : SensorEventListener {
     fun sendMouseDelta(dx: Float, dy: Float, wheel: Int = 0, buttons: Int = 0) {
         val scaledDx = dx * sensitivity
         val scaledDy = dy * sensitivity
+
+        // 1. Try Wi-Fi TV Companion Cursor first
+        if (onCompanionMove?.invoke(scaledDx, scaledDy) == true) {
+            return
+        }
+
+        // 2. Try Bluetooth HID Mouse
         val hid = hidDevice
         val host = connectedHost
-
         if (hid != null && host != null && _isBtConnected.value) {
             val bx = scaledDx.roundToInt().coerceIn(-127, 127).toByte()
             val by = scaledDy.roundToInt().coerceIn(-127, 127).toByte()
             val bw = wheel.coerceIn(-127, 127).toByte()
             hid.sendReport(host, 1, byteArrayOf(buttons.toByte(), bx, by, bw))
         } else {
+            // 3. Fallback to D-Pad impulses
             accumX += scaledDx
             accumY += scaledDy
             val threshold = 75f
@@ -162,6 +219,9 @@ class AirMouseController(context: Context) : SensorEventListener {
                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (e: Exception) { Logger.log("BT: ${e.message}") }
+            Logger.log("AirMouse: Запрос видимости Bluetooth (300 сек) отправлен")
+        } catch (e: Exception) {
+            Logger.log("BT ошибка: ${e.message}")
+        }
     }
 }
