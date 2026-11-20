@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import remote.RemoteAppLinkLaunchRequest
 import remote.RemoteKeyCode
 import remote.RemoteMessage
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 data class AppShortcut(
@@ -73,6 +74,7 @@ class HomeViewModel(
 
     private val _uiState = MutableStateFlow(RemoteState())
     val uiState: StateFlow<RemoteState> = _uiState.asStateFlow()
+    private val isConnecting = AtomicBoolean(false)
 
     private var scanJob: Job? = null
 
@@ -366,11 +368,6 @@ class HomeViewModel(
         }
     }
 
-import java.util.concurrent.atomic.AtomicBoolean
-
-class HomeViewModel(...) : ViewModel() {
-    private val isConnecting = AtomicBoolean(false)
-
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             if (!connectionManager.isConnected.value) {
@@ -415,13 +412,11 @@ class HomeViewModel(...) : ViewModel() {
 
     fun toggleVoice() {
         viewModelScope.launch {
-            // Если голос уже активен - просто стопаем, не переподключаемся
             if (connectionManager.isVoiceActive.value) {
                 connectionManager.stopVoiceStream()
                 return@launch
             }
 
-            // Если не подключены - подключаемся один раз
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp
                 if (ip != null) {
@@ -429,7 +424,6 @@ class HomeViewModel(...) : ViewModel() {
                 }
             }
             
-            // Если после попытки подключения (или если были подключены) соединение активно - запускаем
             if (connectionManager.isConnected.value) {
                 connectionManager.startVoiceStream()
             } else {
