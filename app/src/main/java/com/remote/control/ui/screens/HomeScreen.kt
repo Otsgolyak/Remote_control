@@ -81,7 +81,34 @@ fun HomeScreen(
     val btPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        homeViewModel.connectBluetoothMouse()
+        homeViewModel.makeBluetoothDiscoverable(context)
+    }
+
+    val sttLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val matches = result.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+        val spokenText = matches?.firstOrNull()
+        if (!spokenText.isNullOrBlank()) {
+            keyboardText = spokenText
+            homeViewModel.sendText(spokenText)
+            Toast.makeText(context, "Отправлено на ТВ: $spokenText", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun launchPhoneSpeechToText() {
+        try {
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Говорите для ввода текста на ТВ...")
+            }
+            sttLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Голосовой ввод Google недоступен на телефоне", Toast.LENGTH_SHORT).show()
+        }
     }
 
     val neonGradient = Brush.linearGradient(

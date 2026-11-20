@@ -436,6 +436,12 @@ class HomeViewModel(
         airMouseController.initBluetoothHid()
     }
 
+    fun makeBluetoothDiscoverable(context: android.content.Context) {
+        airMouseController.initBluetoothHid()
+        airMouseController.makeDiscoverable(context)
+    }
+
+
     fun setGyroEnabled(enabled: Boolean) {
         airMouseController.setGyroEnabled(enabled)
     }
