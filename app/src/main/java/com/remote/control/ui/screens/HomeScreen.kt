@@ -62,6 +62,9 @@ fun HomeScreen(
     var shortcutUrl by remember { mutableStateOf("") }
     var shortcutIcon by remember { mutableStateOf("star") }
 
+    var showBtMouseDialog by remember { mutableStateOf(false) }
+    var bondedBtList by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+
     val tabs = listOf("D-Pad", "Air Mouse", "Клавиатура")
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -81,7 +84,9 @@ fun HomeScreen(
     val btPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        homeViewModel.makeBluetoothDiscoverable(context)
+        homeViewModel.connectBluetoothMouse()
+        bondedBtList = homeViewModel.getBondedBluetoothDevices()
+        showBtMouseDialog = true
     }
 
     val sttLauncher = rememberLauncherForActivityResult(
@@ -448,25 +453,6 @@ fun HomeScreen(
                                 Button(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        Toast.makeText(context, "Подключение/установка Wi-Fi курсора на ТВ...", Toast.LENGTH_SHORT).show()
-                                        homeViewModel.installTvCursorCompanion { msg ->
-                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (state.isCompanionCursorActive) Color(0xFF1E3A2B) else Color(0xFFFF6D00)
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        if (state.isCompanionCursorActive) "Wi-Fi Курсор: ВКЛ" else "Курсор Wi-Fi",
-                                        fontSize = 11.sp,
-                                        color = Color.White
-                                    )
-                                }
-                                Button(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                             btPermissionLauncher.launch(
                                                 arrayOf(
@@ -475,7 +461,9 @@ fun HomeScreen(
                                                 )
                                             )
                                         } else {
-                                            homeViewModel.makeBluetoothDiscoverable(context)
+                                            homeViewModel.connectBluetoothMouse()
+                                            bondedBtList = homeViewModel.getBondedBluetoothDevices()
+                                            showBtMouseDialog = true
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(
@@ -491,7 +479,7 @@ fun HomeScreen(
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        if (state.isBtMouseConnected) "BT: ВКЛ" else "BT Мышь",
+                                        if (state.isBtMouseConnected) "BT Курсор: ВКЛ" else "BT Мышь",
                                         fontSize = 11.sp,
                                         color = Color.White
                                     )
@@ -857,6 +845,76 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { showAddShortcutDialog = false }) {
                     Text("Отмена", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    // Bluetooth Mouse Selection Dialog
+    if (showBtMouseDialog) {
+        AlertDialog(
+            onDismissRequest = { showBtMouseDialog = false },
+            containerColor = Color(0xFF1A1A24),
+            title = {
+                Text(
+                    "Bluetooth Аэромышь (HID Курсор)",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (bondedBtList.isEmpty()) {
+                        Text(
+                            "Нет сопряженных Bluetooth-устройств. Нажмите кнопку ниже, чтобы сделать телефон видимым, и выберите его в настройках Bluetooth на ТВ.",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                    } else {
+                        Text(
+                            "Выберите ваш ТВ из сопряженных Bluetooth-устройств:",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                        bondedBtList.forEach { (btName, btAddr) ->
+                            Button(
+                                onClick = {
+                                    homeViewModel.connectBluetoothMouseToAddress(btAddr)
+                                    showBtMouseDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                            ) {
+                                Text(
+                                    "$btName ($btAddr)",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            homeViewModel.makeBluetoothDiscoverable(context)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+                    ) {
+                        Text(
+                            "Сделать телефон видимым для ТВ (300 сек)",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBtMouseDialog = false }) {
+                    Text("Закрыть", color = Color(0xFF00E5FF))
                 }
             }
         )

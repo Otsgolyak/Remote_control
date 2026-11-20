@@ -93,24 +93,24 @@ class AirMouseController(context: Context) : SensorEventListener {
     private val _isGyroEnabled = MutableStateFlow(false)
     val isGyroEnabled: StateFlow<Boolean> = _isGyroEnabled.asStateFlow()
 
-    private val _btStatus = MutableStateFlow("Режим Wi-Fi тачпада / Курсор на ТВ")
+    private val _btStatus = MutableStateFlow("Ожидание Bluetooth HID")
     val btStatus: StateFlow<String> = _btStatus.asStateFlow()
 
     var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
     var onVisualCursorDelta: ((dx: Float, dy: Float) -> Unit)? = null
-    var onCompanionMove: ((dx: Float, dy: Float) -> Boolean)? = null
 
     private val profileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
             if (profile == BluetoothProfile.HID_DEVICE) {
                 bluetoothHidDevice = proxy as BluetoothHidDevice
-                Logger.log("AirMouse: HID Service Connected")
+                Logger.log("BT HID: ServiceListener.onServiceConnected(HID_DEVICE)")
                 registerHidApp()
             }
         }
 
         override fun onServiceDisconnected(profile: Int) {
             if (profile == BluetoothProfile.HID_DEVICE) {
+                Logger.log("BT HID: ServiceListener.onServiceDisconnected(HID_DEVICE)")
                 bluetoothHidDevice = null
                 connectedHost = null
                 _isBtConnected.value = false
@@ -121,7 +121,7 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     private val hidCallback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-            Logger.log("AirMouse: HID registered=$registered, plugged=${pluggedDevice?.name}")
+            Logger.log("BT HID: onAppStatusChanged(registered=$registered, plugged=${pluggedDevice?.name}[${pluggedDevice?.address}])")
             if (!registered) {
                 _isBtConnected.value = false
                 connectedHost = null
@@ -132,26 +132,39 @@ class AirMouseController(context: Context) : SensorEventListener {
             _btStatus.value = "HID профиль активен"
             val hid = bluetoothHidDevice ?: return
             if (pluggedDevice != null) {
-                hid.connect(pluggedDevice)
+                val connOk = hid.connect(pluggedDevice)
+                Logger.log("BT HID: onAppStatusChanged connect(plugged=${pluggedDevice.name}[${pluggedDevice.address}]) -> result=$connOk")
             } else {
                 bluetoothAdapter?.bondedDevices?.forEach { device ->
-                    Logger.log("AirMouse: Попытка BT HID подключения к ${device.name}")
-                    hid.connect(device)
+                    val connOk = hid.connect(device)
+                    Logger.log("BT HID: onAppStatusChanged connect(bonded=${device.name}[${device.address}]) -> result=$connOk")
                 }
             }
         }
 
         override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
-            Logger.log("AirMouse: BT HID state=$state (${device?.name})")
+            val stateName = when (state) {
+                BluetoothProfile.STATE_CONNECTED -> "STATE_CONNECTED"
+                BluetoothProfile.STATE_CONNECTING -> "STATE_CONNECTING"
+                BluetoothProfile.STATE_DISCONNECTED -> "STATE_DISCONNECTED"
+                BluetoothProfile.STATE_DISCONNECTING -> "STATE_DISCONNECTING"
+                else -> "UNKNOWN($state)"
+            }
+            Logger.log("BT HID: onConnectionStateChanged device=${device?.name}[${device?.address}], state=$stateName ($state)")
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     connectedHost = device
                     _isBtConnected.value = true
                     _btStatus.value = "BT Курсор подключен к ${device?.name ?: "Android TV"}"
                     // Триггер отрисовки: отправляем первое ненулевое смещение, чтобы ТВ сразу показал системный курсор
-                    sendMouseDelta(1, 1)
-                    sendMouseDelta(-1, -1)
-                    Logger.log("BT HID Мышь подключена к ${device?.name}! Отправлен wake-up импульс для включения курсора на ТВ")
+                    val hid = bluetoothHidDevice
+                    val wake1 = if (hid != null && device != null) {
+                        hid.sendReport(device, 0, byteArrayOf(0, 1, 1, 0))
+                    } else false
+                    val wake2 = if (hid != null && device != null) {
+                        hid.sendReport(device, 0, byteArrayOf(0, (-1).toByte(), (-1).toByte(), 0))
+                    } else false
+                    Logger.log("BT HID: Мышь подключена к ${device?.name}[${device?.address}]! Wake-up sendReport -> wake1=$wake1, wake2=$wake2")
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
                     _btStatus.value = "Подключение к ${device?.name ?: "ТВ"}..."
@@ -171,11 +184,14 @@ class AirMouseController(context: Context) : SensorEventListener {
         val adapter = bluetoothAdapter
         if (adapter == null || !adapter.isEnabled) {
             _btStatus.value = "Включите Bluetooth на смартфоне"
-            Logger.log("AirMouse: Bluetooth выключен или недоступен")
+            Logger.log("BT HID: initBluetoothHid() — адаптер недоступен или выключен (adapter=${adapter != null}, enabled=${adapter?.isEnabled})")
             return
         }
+        val bondedList = adapter.bondedDevices?.joinToString { "${it.name}[${it.address}]" } ?: "none"
+        Logger.log("BT HID: initBluetoothHid() — адаптер включен (state=${adapter.state}), bondedDevices=[$bondedList]")
         _btStatus.value = "Запуск Bluetooth HID..."
-        adapter.getProfileProxy(appContext, profileListener, BluetoothProfile.HID_DEVICE)
+        val proxyOk = adapter.getProfileProxy(appContext, profileListener, BluetoothProfile.HID_DEVICE)
+        Logger.log("BT HID: getProfileProxy(HID_DEVICE) -> result=$proxyOk")
     }
 
     private fun registerHidApp() {
@@ -187,16 +203,44 @@ class AirMouseController(context: Context) : SensorEventListener {
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             MOUSE_REPORT_DESCRIPTOR
         )
-        hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
+        val regResult = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
+        Logger.log("BT HID: registerApp вызван -> result=$regResult")
     }
 
     fun connectToDevice(device: BluetoothDevice) {
         val hid = bluetoothHidDevice
         if (hid != null) {
-            Logger.log("AirMouse: Попытка подключения к ${device.name} (${device.address})")
-            hid.connect(device)
+            val ok = hid.connect(device)
+            Logger.log("BT HID: вызов connect(${device.name} / ${device.address}) -> result=$ok")
         } else {
-            Logger.log("AirMouse: BluetoothHidDevice не инициализирован")
+            Logger.log("BT HID еще не готов, запуск инициализации для подключения к ${device.address}")
+            initBluetoothHid()
+        }
+    }
+
+    fun connectToAddress(address: String) {
+        val adapter = bluetoothAdapter
+        if (adapter == null || !adapter.isEnabled) {
+            Logger.log("BT HID: connectToAddress($address) — Bluetooth адаптер выключен или недоступен")
+            return
+        }
+        val device = try {
+            adapter.bondedDevices?.firstOrNull { it.address.equals(address, ignoreCase = true) }
+                ?: adapter.getRemoteDevice(address.uppercase())
+        } catch (e: Exception) {
+            Logger.log("BT HID: ошибка поиска устройства по адресу $address: ${e.message}")
+            null
+        }
+        if (device == null) {
+            Logger.log("BT HID: устройство с адресом $address не найдено")
+            return
+        }
+        if (bluetoothHidDevice == null) {
+            Logger.log("BT HID еще не готов, запуск инициализации для подключения к $address")
+            initBluetoothHid()
+        } else {
+            val ok = bluetoothHidDevice?.connect(device)
+            Logger.log("BT HID: вызов connect(${device.name} / $address) -> result=$ok")
         }
     }
 
@@ -264,12 +308,7 @@ class AirMouseController(context: Context) : SensorEventListener {
                 return
             }
 
-            // 2. Wi-Fi курсор-компаньон (если активен)
-            if (onCompanionMove?.invoke(deltaX.toFloat(), deltaY.toFloat()) == true) {
-                return
-            }
-
-            // 3. Фоллбэк на D-Pad (если Bluetooth HID еще не подключен)
+            // 2. Фоллбэк на D-Pad (если Bluetooth HID еще не подключен)
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastEventTime >= debounceMs && (abs(deltaX) >= 3 || abs(deltaY) >= 3)) {
                 lastEventTime = currentTime
@@ -313,10 +352,6 @@ class AirMouseController(context: Context) : SensorEventListener {
             return
         }
 
-        if (onCompanionMove?.invoke(dx * sensitivity, dy * sensitivity) == true) {
-            return
-        }
-
         accumX += dx * sensitivity
         accumY += dy * sensitivity
         val threshold = 75f
@@ -328,13 +363,18 @@ class AirMouseController(context: Context) : SensorEventListener {
     }
 
     fun sendClick(leftButton: Boolean = true) {
-        val hid = bluetoothHidDevice ?: return
-        val device = connectedHost ?: return
-        if (!_isBtConnected.value) return
+        val hid = bluetoothHidDevice
+        val device = connectedHost
+        val btnName = if (leftButton) "ЛКМ" else "ПКМ"
+        if (hid == null || device == null || !_isBtConnected.value) {
+            Logger.log("BT HID: sendClick($btnName) пропущен — HID не подключен (hid=${hid != null}, host=${device?.address}, connected=${_isBtConnected.value})")
+            return
+        }
 
         val buttonMask: Byte = if (leftButton) 0x01 else 0x02
-        hid.sendReport(device, 0, byteArrayOf(buttonMask, 0x00, 0x00, 0x00))
-        hid.sendReport(device, 0, byteArrayOf(0x00, 0x00, 0x00, 0x00))
+        val downOk = hid.sendReport(device, 0, byteArrayOf(buttonMask, 0x00, 0x00, 0x00))
+        val upOk = hid.sendReport(device, 0, byteArrayOf(0x00, 0x00, 0x00, 0x00))
+        Logger.log("BT HID: sendClick($btnName) к ${device.name}[${device.address}] -> down=$downOk, up=$upOk")
     }
 
     fun sendScroll(wheelDelta: Int) {

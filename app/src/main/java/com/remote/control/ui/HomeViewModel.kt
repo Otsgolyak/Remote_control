@@ -95,15 +95,6 @@ class HomeViewModel(
     )
 
     init {
-        airMouseController.onCompanionMove = { dx, dy ->
-            if (tvCompanionClient.isCompanionConnected.value) {
-                tvCompanionClient.sendMove(dx, dy)
-                true
-            } else {
-                false
-            }
-        }
-
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
                 sendGyroKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
@@ -138,12 +129,6 @@ class HomeViewModel(
                         else -> "Не подключено"
                     }
                 )
-            }
-        }
-
-        viewModelScope.launch {
-            tvCompanionClient.isCompanionConnected.collect { compConn ->
-                _uiState.value = _uiState.value.copy(isCompanionCursorActive = compConn)
             }
         }
 
@@ -304,7 +289,6 @@ class HomeViewModel(
             }
 
             samsungConnectionManager.disconnect()
-            launch { tvCompanionClient.tryConnect(device.ip) }
 
             try {
                 connectionManager.connect(device.ip, 6466)
@@ -433,7 +417,6 @@ class HomeViewModel(
             if (_uiState.value.selectedDeviceIp == ip) {
                 connectionManager.disconnect()
                 samsungConnectionManager.disconnect()
-                tvCompanionClient.disconnect()
                 _uiState.value = _uiState.value.copy(
                     selectedDeviceIp = null,
                     selectedDeviceName = "Xiaomi TV",
@@ -579,27 +562,23 @@ class HomeViewModel(
     }
 
     fun installTvCursorCompanion(onResult: (String) -> Unit) {
-        val ip = _uiState.value.selectedDeviceIp
-        if (ip.isNullOrBlank()) {
-            onResult("Сначала выберите или подключите ТВ")
-            return
-        }
-        viewModelScope.launch {
-            val connected = tvCompanionClient.tryConnect(ip)
-            if (connected) {
-                onResult("Wi-Fi курсор уже запущен и подключен к ТВ!")
-                return@launch
-            }
-            val res = tvCompanionClient.installAndActivateOnTv(ip)
-            res.fold(
-                onSuccess = { msg -> onResult(msg) },
-                onFailure = { err -> onResult("Ошибка ADB ($ip:5555): включите Отладку по сети на ТВ (${err.message})") }
-            )
-        }
+        onResult("Используйте Bluetooth HID мышь (курсор работает без ADB)")
     }
 
     fun connectBluetoothMouse() {
         airMouseController.initBluetoothHid()
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    fun getBondedBluetoothDevices(): List<Pair<String, String>> {
+        return airMouseController.getBondedDevices()
+            .map { (it.name ?: "Bluetooth TV") to it.address }
+            .also { Logger.log("BT список сопряженных устройств: ${it.size}") }
+    }
+
+    fun connectBluetoothMouseToAddress(address: String) {
+        Logger.log("Выбрано BT-устройство для HID-мыши: $address")
+        airMouseController.connectToAddress(address)
     }
 
     fun makeBluetoothDiscoverable(context: android.content.Context) {
@@ -608,10 +587,6 @@ class HomeViewModel(
     }
 
     fun setGyroEnabled(enabled: Boolean) {
-        val ip = _uiState.value.selectedDeviceIp
-        if (enabled && ip != null && !_uiState.value.isSamsungMode) {
-            viewModelScope.launch { tvCompanionClient.tryConnect(ip) }
-        }
         airMouseController.setGyroEnabled(enabled)
     }
 
@@ -620,9 +595,8 @@ class HomeViewModel(
     }
 
     fun onMouseClick(left: Boolean) {
-        if (tvCompanionClient.isCompanionConnected.value && left) {
-            tvCompanionClient.sendClick()
-        } else if (airMouseController.isBtConnected.value) {
+        Logger.log("AirMouse клик: left=$left, btConnected=${airMouseController.isBtConnected.value}")
+        if (airMouseController.isBtConnected.value) {
             airMouseController.sendClick(left)
         } else {
             sendKey(if (left) RemoteKeyCode.KEYCODE_DPAD_CENTER else RemoteKeyCode.KEYCODE_BACK)

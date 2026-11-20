@@ -25,11 +25,8 @@ jobs:
       with:
         gradle-version: '8.5'
 
-    - name: Build Companion & Main Debug APK
+    - name: Build Debug APK
       run: |
-        mkdir -p app/src/main/assets
-        gradle :companion:assembleDebug
-        cp companion/build/outputs/apk/debug/companion-debug.apk app/src/main/assets/tv-cursor.apk
         gradle :app:assembleDebug
         cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Remote_control-v1.0.0.apk
 
@@ -46,7 +43,7 @@ jobs:
       with:
         tag_name: v1.0.0
         name: "Release v1.0.0 (Universal Android TV & Samsung Remote)"
-        body: "Нативный пульт для Android TV (Xiaomi TV) + Samsung Tizen TV со встроенным Wi-Fi курсором и голосовым вводом."
+        body: "Нативный пульт для Android TV (Xiaomi TV) + Samsung Tizen TV с Bluetooth HID аэромышью и голосовым вводом."
         files: |
           app/build/outputs/apk/debug/app-debug.apk
           app/build/outputs/apk/debug/Remote_control-v1.0.0.apk

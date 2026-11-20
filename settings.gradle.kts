@@ -15,4 +15,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Remote_control"
 include(":app")
-include(":companion")
