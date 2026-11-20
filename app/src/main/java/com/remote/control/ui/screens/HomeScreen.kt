@@ -681,15 +681,7 @@ fun HomeScreen(
                             .background(if (state.isVoiceActive) Color(0xFF3A1818) else Color(0xFF1F1F28))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                val hasPerm = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPerm) {
-                                    homeViewModel.toggleVoice()
-                                } else {
-                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
+                                launchPhoneSpeechToText()
                             },
                         contentAlignment = Alignment.Center
                     ) {
