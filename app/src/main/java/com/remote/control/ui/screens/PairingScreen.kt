@@ -158,21 +158,46 @@ fun PairingScreen(
                                         Text(device.name, color = Color.White, fontWeight = FontWeight.SemiBold)
                                         Surface(
                                             color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(4.dp)
+                                            shape = RoundedCornerShape(4.dp),
+                                            modifier = Modifier.clickable {
+                                                homeViewModel.toggleDeviceType(device.ip)
+                                            }
                                         ) {
-                                            Text(
-                                                text = if (device.isSamsung) "Samsung Tizen" else "Android TV",
-                                                color = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                            ) {
+                                                Text(
+                                                    text = if (device.isSamsung) "Samsung Tizen" else "Android TV",
+                                                    color = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Icon(
+                                                    Icons.Default.SwapHoriz,
+                                                    contentDescription = "Сменить режим",
+                                                    tint = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
                                         }
                                     }
                                     Text("IP: ${device.ip}", color = Color.Gray, fontSize = 12.sp)
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        homeViewModel.toggleDeviceType(device.ip)
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.SyncAlt,
+                                        contentDescription = "Переключить тип",
+                                        tint = if (device.isSamsung) Color(0xFF007AFF) else Color(0xFF00E5FF)
+                                    )
+                                }
                                 IconButton(
                                     onClick = {
                                         renameText = device.name
@@ -244,7 +269,7 @@ fun PairingScreen(
                 }
             } else {
                 items(state.discoveredDevices) { tv ->
-                    val isSamsungTv = tv.port == 8001 || tv.name.contains("Samsung", ignoreCase = true)
+                    val isSamsungTv = tv.port == 8001 || tv.port == 8002 || tv.name.contains("Samsung", ignoreCase = true) || tv.name.contains("Tizen", ignoreCase = true)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF181822)),
                         modifier = Modifier

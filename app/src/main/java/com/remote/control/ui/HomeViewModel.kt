@@ -263,9 +263,22 @@ class HomeViewModel(
         if (cleanIp.isEmpty()) return
         val devName = name.ifBlank { "Samsung TV ($cleanIp)" }
         viewModelScope.launch {
-            val device = Device(ip = cleanIp, name = devName, isSamsung = true)
-            repository.addDevice(device)
-            connectToSavedDevice(device, onConnected)
+            repository.addDevice(Device(cleanIp, devName, isSamsung = true))
+            _uiState.value = _uiState.value.copy(
+                isSamsungMode = true,
+                selectedDeviceIp = cleanIp,
+                selectedDeviceName = devName,
+                isConnecting = true,
+                pairingError = null,
+                status = "Подключение к $cleanIp..."
+            )
+            repository.setSelectedDevice(cleanIp)
+            connectionManager.disconnect()
+            Logger.log("Запуск подключения к Samsung TV ($cleanIp) по WebSocket...")
+            samsungConnectionManager.connect(cleanIp)
+            delay(500)
+            _uiState.value = _uiState.value.copy(isConnecting = false)
+            onConnected()
         }
     }
 
@@ -403,6 +416,17 @@ class HomeViewModel(
         }
     }
 
+    fun toggleDeviceType(ip: String) {
+        viewModelScope.launch {
+            repository.toggleDeviceType(ip)
+            val updated = repository.pairedDevices.firstOrNull()?.find { it.ip == ip }
+            if (updated != null && _uiState.value.selectedDeviceIp == ip) {
+                _uiState.value = _uiState.value.copy(isSamsungMode = updated.isSamsung)
+            }
+            Logger.log("Переключен тип устройства ($ip), новый режим Samsung: ${updated?.isSamsung}")
+        }
+    }
+
     fun removeSavedDevice(ip: String) {
         viewModelScope.launch {
             repository.removeDevice(ip)
@@ -478,9 +502,8 @@ class HomeViewModel(
                         delay(300)
                     }
                 }
-                if (samsungConnectionManager.isConnected.value) {
-                    samsungConnectionManager.sendKey(keyCode)
-                }
+                Logger.log("Samsung Tizen sendKey: ${keyCode.name}")
+                samsungConnectionManager.sendKey(keyCode)
                 return@launch
             }
 

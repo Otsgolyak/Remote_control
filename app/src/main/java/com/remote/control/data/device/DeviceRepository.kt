@@ -86,6 +86,23 @@ class DeviceRepository(private val context: Context) {
         }
     }
 
+    suspend fun toggleDeviceType(ip: String) {
+        context.dataStore.edit { preferences ->
+            val json = preferences[DEVICES_KEY] ?: "[]"
+            val currentList = try {
+                Json.decodeFromString<List<Device>>(json).toMutableList()
+            } catch (e: Exception) {
+                mutableListOf()
+            }
+            val idx = currentList.indexOfFirst { it.ip == ip }
+            if (idx >= 0) {
+                val currentDevice = currentList[idx]
+                currentList[idx] = currentDevice.copy(isSamsung = !currentDevice.isSamsung)
+                preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+            }
+        }
+    }
+
     suspend fun removeDevice(ip: String) {
         context.dataStore.edit { preferences ->
             val json = preferences[DEVICES_KEY] ?: "[]"
