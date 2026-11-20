@@ -139,10 +139,16 @@ class ConnectionManagerImpl(
                 val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, 16384)
                 recorder.startRecording()
                 val buffer = ByteArray(8192)
+                var bytesSent = 0L
                 while (_isVoiceActive.value) {
                     val read = recorder.read(buffer, 0, buffer.size)
                     if (read > 0) {
                         voiceChannel.trySend(buffer.copyOf(read))
+                        bytesSent += read
+                    }
+                    // Раз в секунду пишем в лог, что голос идет
+                    if (bytesSent % 16000 == 0L) {
+                        Logger.log("Голос: передано $bytesSent байт")
                     }
                 }
                 recorder.stop()
