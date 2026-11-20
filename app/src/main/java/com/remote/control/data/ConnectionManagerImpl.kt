@@ -42,6 +42,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLSocket
 import kotlin.concurrent.thread
 
@@ -66,6 +67,10 @@ class ConnectionManagerImpl(
     private var voiceSenderJob: Job? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sendMutex = Mutex()
+    private val connectMutex = Mutex()
+    @Volatile private var currentConnectedIp: String? = null
+    private val isConnectingState = AtomicBoolean(false)
+    private val disconnectLock = Any()
     private var voiceChannel = Channel<ByteArray>(Channel.BUFFERED)
 
     @Volatile private var activeFeatures: Int = REQUESTED_FEATURES
@@ -84,32 +89,52 @@ class ConnectionManagerImpl(
     override val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
     override suspend fun connect(ip: String, port: Int) {
-        withContext(Dispatchers.IO) {
-            disconnect()
-            Logger.log("Подключение к ТВ $ip:$port (Android TV Remote v2)...")
-            try {
-                val sslContext = pairingRepository.createSslContext()
-                val rawSocket = sslContext.socketFactory.createSocket() as SSLSocket
-                rawSocket.connect(InetSocketAddress(ip, port), 10000)
-                rawSocket.keepAlive = true
-                rawSocket.tcpNoDelay = true
-                rawSocket.startHandshake()
+        connectMutex.withLock {
+            if (_isConnected.value && currentConnectedIp == ip && socket?.isConnected == true) {
+                Logger.log("Уже подключено к $ip:$port")
+                return@withLock
+            }
 
-                socket = rawSocket
-                inputStream = rawSocket.inputStream
-                outputStream = rawSocket.outputStream
-                hasImeCounter = false
-                hasFieldCounter = false
-                activeFeatures = REQUESTED_FEATURES
-                _isConnected.value = true
-                _lastError.value = null
-                Logger.log("mTLS соединение с $ip:$port установлено!")
-                startReaderLoop()
-            } catch (e: Exception) {
-                _isConnected.value = false
-                _lastError.value = e.message
-                Logger.log("Ошибка подключения к $ip:$port -> ${e.message}")
-                throw e
+            withContext(Dispatchers.IO) {
+                if (!isConnectingState.compareAndSet(false, true)) {
+                    Logger.log("Подключение к $ip:$port уже выполняется")
+                    return@withContext
+                }
+
+                try {
+                    disconnect()
+                    Logger.log("Подключение к ТВ $ip:$port (Android TV Remote v2)...")
+                    val sslContext = pairingRepository.createSslContext()
+                    val rawSocket = sslContext.socketFactory.createSocket() as SSLSocket
+                    rawSocket.connect(InetSocketAddress(ip, port), 10000)
+                    rawSocket.keepAlive = true
+                    rawSocket.tcpNoDelay = true
+                    rawSocket.startHandshake()
+
+                    synchronized(disconnectLock) {
+                        socket = rawSocket
+                        inputStream = rawSocket.inputStream
+                        outputStream = rawSocket.outputStream
+                        hasImeCounter = false
+                        hasFieldCounter = false
+                        activeFeatures = REQUESTED_FEATURES
+                        _isConnected.value = true
+                        _lastError.value = null
+                    }
+                    currentConnectedIp = ip
+                    Logger.log("mTLS соединение с $ip:$port установлено!")
+                    startReaderLoop()
+                } catch (e: Exception) {
+                    currentConnectedIp = null
+                    synchronized(disconnectLock) {
+                        _isConnected.value = false
+                        _lastError.value = e.message
+                    }
+                    Logger.log("Ошибка подключения к $ip:$port -> ${e.message}")
+                    throw e
+                } finally {
+                    isConnectingState.set(false)
+                }
             }
         }
     }
@@ -117,7 +142,7 @@ class ConnectionManagerImpl(
     private fun startReaderLoop() {
         readerJob?.cancel()
         readerJob = ioScope.launch {
-            val input = inputStream ?: return@launch
+            val input = synchronized(disconnectLock) { inputStream } ?: return@launch
             try {
                 while (isActive && _isConnected.value) {
                     val msg = RemoteMessage.parseDelimitedFrom(input) ?: break
@@ -417,15 +442,20 @@ class ConnectionManagerImpl(
     }
 
     override suspend fun disconnect() {
-        _isVoiceActive.value = false
-        runCatching { voiceChannel.close() }
-        voiceSenderJob?.cancel()
-        readerJob?.cancel()
-        runCatching { socket?.close() }
-        socket = null
-        inputStream = null
-        outputStream = null
-        _isConnected.value = false
+        val s = synchronized(disconnectLock) {
+            currentConnectedIp = null
+            _isVoiceActive.value = false
+            _isConnected.value = false
+            runCatching { voiceChannel.close() }
+            voiceSenderJob?.cancel()
+            readerJob?.cancel()
+            val sock = socket
+            socket = null
+            inputStream = null
+            outputStream = null
+            sock
+        }
+        runCatching { s?.close() }
     }
 
     override fun getSocket(): Socket? = socket

@@ -84,6 +84,7 @@ class HomeViewModel(
     private val _uiState = MutableStateFlow(RemoteState())
     val uiState: StateFlow<RemoteState> = _uiState.asStateFlow()
     private val isConnecting = AtomicBoolean(false)
+    private var lastReconnectAttemptTimeMs: Long = 0L
 
     private var scanJob: Job? = null
 
@@ -105,9 +106,9 @@ class HomeViewModel(
 
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
-                sendKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
+                sendGyroKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
             } else {
-                sendKey(if (dy > 0) RemoteKeyCode.KEYCODE_DPAD_DOWN else RemoteKeyCode.KEYCODE_DPAD_UP)
+                sendGyroKey(if (dy > 0) RemoteKeyCode.KEYCODE_DPAD_DOWN else RemoteKeyCode.KEYCODE_DPAD_UP)
             }
         }
 
@@ -450,28 +451,52 @@ class HomeViewModel(
         }
     }
 
+    fun sendGyroKey(keyCode: RemoteKeyCode) {
+        viewModelScope.launch {
+            if (_uiState.value.isSamsungMode) {
+                if (samsungConnectionManager.isConnected.value) {
+                    samsungConnectionManager.sendKey(keyCode)
+                }
+            } else {
+                if (connectionManager.isConnected.value) {
+                    connectionManager.sendKey(keyCode)
+                }
+            }
+        }
+    }
+
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
+            val now = System.currentTimeMillis()
             if (_uiState.value.isSamsungMode) {
                 if (!samsungConnectionManager.isConnected.value) {
                     val ip = _uiState.value.selectedDeviceIp ?: return@launch
-                    samsungConnectionManager.connect(ip)
-                    delay(300)
+                    if (now - lastReconnectAttemptTimeMs >= 5000L) {
+                        lastReconnectAttemptTimeMs = now
+                        Logger.log("Переподключение к Samsung TV ($ip) перед отправкой ${keyCode.name}...")
+                        samsungConnectionManager.connect(ip)
+                        delay(300)
+                    }
                 }
-                samsungConnectionManager.sendKey(keyCode)
+                if (samsungConnectionManager.isConnected.value) {
+                    samsungConnectionManager.sendKey(keyCode)
+                }
                 return@launch
             }
 
             if (!connectionManager.isConnected.value) {
-                if (isConnecting.compareAndSet(false, true)) {
-                    try {
-                        val ip = _uiState.value.selectedDeviceIp ?: return@launch
-                        Logger.log("Попытка подключения к $ip...")
-                        connectionManager.connect(ip, 6466)
-                    } catch (e: Exception) {
-                        Logger.log("Ошибка подключения: ${e.message}")
-                    } finally {
-                        isConnecting.set(false)
+                val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                if (now - lastReconnectAttemptTimeMs >= 5000L) {
+                    if (isConnecting.compareAndSet(false, true)) {
+                        lastReconnectAttemptTimeMs = now
+                        try {
+                            Logger.log("Переподключение к $ip перед отправкой ${keyCode.name}...")
+                            connectionManager.connect(ip, 6466)
+                        } catch (e: Exception) {
+                            Logger.log("Ошибка подключения: ${e.message}")
+                        } finally {
+                            isConnecting.set(false)
+                        }
                     }
                 }
             }
