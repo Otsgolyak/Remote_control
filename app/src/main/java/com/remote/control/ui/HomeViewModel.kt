@@ -366,25 +366,29 @@ class HomeViewModel(
         }
     }
 
-    private var lastReconnectAttempt = 0L
+import java.util.concurrent.atomic.AtomicBoolean
+
+class HomeViewModel(...) : ViewModel() {
+    private val isConnecting = AtomicBoolean(false)
 
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             if (!connectionManager.isConnected.value) {
-                val ip = _uiState.value.selectedDeviceIp
-                val now = System.currentTimeMillis()
-                
-                // Простая защита от спама переподключениями (не чаще раза в 5 секунд)
-                if (ip != null && (now - lastReconnectAttempt > 5000)) {
-                    lastReconnectAttempt = now
-                    Logger.log("Переподключение к $ip перед отправкой ${keyCode.name}...")
-                    runCatching { connectionManager.connect(ip, 6466) }
-                } else {
-                    Logger.log("Пропуск переподключения (ожидание или нет IP)")
-                    return@launch
+                if (isConnecting.compareAndSet(false, true)) {
+                    try {
+                        val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                        Logger.log("Попытка подключения к $ip...")
+                        connectionManager.connect(ip, 6466)
+                    } catch (e: Exception) {
+                        Logger.log("Ошибка подключения: ${e.message}")
+                    } finally {
+                        isConnecting.set(false)
+                    }
                 }
             }
-            connectionManager.sendKey(keyCode)
+            if (connectionManager.isConnected.value) {
+                connectionManager.sendKey(keyCode)
+            }
         }
     }
 
@@ -411,16 +415,25 @@ class HomeViewModel(
 
     fun toggleVoice() {
         viewModelScope.launch {
+            // Если голос уже активен - просто стопаем, не переподключаемся
+            if (connectionManager.isVoiceActive.value) {
+                connectionManager.stopVoiceStream()
+                return@launch
+            }
+
+            // Если не подключены - подключаемся один раз
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp
                 if (ip != null) {
                     runCatching { connectionManager.connect(ip, 6466) }
                 }
             }
-            if (connectionManager.isVoiceActive.value) {
-                connectionManager.stopVoiceStream()
-            } else {
+            
+            // Если после попытки подключения (или если были подключены) соединение активно - запускаем
+            if (connectionManager.isConnected.value) {
                 connectionManager.startVoiceStream()
+            } else {
+                Logger.log("Голос не запущен: нет соединения с ТВ")
             }
         }
     }
