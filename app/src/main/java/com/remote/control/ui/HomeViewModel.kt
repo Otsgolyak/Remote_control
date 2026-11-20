@@ -416,14 +416,12 @@ class HomeViewModel(
                 connectionManager.stopVoiceStream()
                 return@launch
             }
-
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp
                 if (ip != null) {
                     runCatching { connectionManager.connect(ip, 6466) }
                 }
             }
-            
             if (connectionManager.isConnected.value) {
                 connectionManager.startVoiceStream()
             } else {
@@ -440,7 +438,6 @@ class HomeViewModel(
         airMouseController.initBluetoothHid()
         airMouseController.makeDiscoverable(context)
     }
-
 
     fun setGyroEnabled(enabled: Boolean) {
         airMouseController.setGyroEnabled(enabled)
