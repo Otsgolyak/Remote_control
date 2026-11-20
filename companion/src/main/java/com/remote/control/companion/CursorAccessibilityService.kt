@@ -2,15 +2,37 @@ package com.remote.control.companion
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.PixelFormat
 import android.graphics.Path
+import android.view.Gravity
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.ImageView
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
 
 class CursorAccessibilityService : AccessibilityService() {
 
+    private var cursorView: ImageView? = null
+    private var windowManager: WindowManager? = null
+
     override fun onServiceConnected() {
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        
+        // Создаем курсор
+        cursorView = ImageView(this).apply {
+            setImageResource(android.R.drawable.presence_online) // Простая точка
+            layoutParams = WindowManager.LayoutParams(
+                50, 50,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.TOP or Gravity.LEFT }
+        }
+        windowManager?.addView(cursorView, cursorView?.layoutParams)
+
+        // Запуск сервера команд
         thread {
             try {
                 val server = ServerSocket(6666)
@@ -18,9 +40,7 @@ class CursorAccessibilityService : AccessibilityService() {
                     val client = server.accept()
                     handleConnection(client)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
@@ -38,14 +58,17 @@ class CursorAccessibilityService : AccessibilityService() {
                 
                 when(cmd) {
                     "CLICK" -> dispatchClick(x, y)
-                    "MOVE" -> { /* Update internal state */ }
+                    "MOVE" -> moveCursor(x, y)
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            socket.close()
-        }
+        } catch (e: Exception) { e.printStackTrace() } finally { socket.close() }
+    }
+
+    private fun moveCursor(x: Float, y: Float) {
+        val params = cursorView?.layoutParams as? WindowManager.LayoutParams
+        params?.x = x.toInt()
+        params?.y = y.toInt()
+        windowManager?.updateViewLayout(cursorView, params)
     }
 
     private fun dispatchClick(x: Float, y: Float) {

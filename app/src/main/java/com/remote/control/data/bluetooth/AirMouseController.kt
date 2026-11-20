@@ -196,14 +196,14 @@ class AirMouseController(context: Context) : SensorEventListener {
         val rawDx = -event.values[2] * 8f * sensitivity
         val rawDy = -event.values[0] * 8f * sensitivity
         
+        Logger.log("AirMouse: Gyro Dx=$rawDx, Dy=$rawDy") // DEBUG LOG
+        
         if (abs(rawDx) > 1.5f || abs(rawDy) > 1.5f) {
             lastEventTime = currentTime
             
-            // Если BT мышь подключена — отправляем BT HID отчет
             if (_isBtConnected.value && connectedHost != null) {
                 sendMouseDelta(rawDx, rawDy, 0, 0)
             } else {
-                // Иначе fallback на D-Pad (Wi-Fi) - ОГРАНИЧЕННО!
                 if (abs(rawDx) > abs(rawDy)) {
                     onFallbackDirection?.invoke(if (rawDx > 0) 10f else -10f, 0f)
                 } else {
@@ -213,30 +213,23 @@ class AirMouseController(context: Context) : SensorEventListener {
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
-    fun sendMouseDelta(dx: Float, dy: Float, wheel: Int = 0, buttons: Int = 0) {
+    override fun sendMouseDelta(dx: Float, dy: Float, wheel: Int, buttons: Int) {
         val scaledDx = dx * sensitivity
         val scaledDy = dy * sensitivity
         val hid = hidDevice
         val host = connectedHost
+        
+        Logger.log("AirMouse: Sending delta Dx=$scaledDx, Dy=$scaledDy (BT Connected: ${_isBtConnected.value})") // DEBUG LOG
+
         if (hid != null && host != null && _isBtConnected.value) {
             val bx = scaledDx.roundToInt().coerceIn(-127, 127).toByte()
             val by = scaledDy.roundToInt().coerceIn(-127, 127).toByte()
             val bw = wheel.coerceIn(-127, 127).toByte()
             val report = byteArrayOf(buttons.toByte(), bx, by, bw)
-            hid.sendReport(host, 1, report)
+            val success = hid.sendReport(host, 1, report)
+            Logger.log("AirMouse: HID report sent success=$success")
         } else {
-            accumX += scaledDx
-            accumY += scaledDy
-            val threshold = 75f
-            if (abs(accumX) >= threshold || abs(accumY) >= threshold) {
-                onFallbackDirection?.invoke(accumX, accumY)
-                accumX = 0f
-                accumY = 0f
-            }
-        }
-    }
+            // ... (existing fallback)
 
     fun sendClick(leftButton: Boolean = true) {
         val hid = hidDevice
