@@ -19,6 +19,7 @@ import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.samsung.SamsungConnectionManager
+import com.remote.control.data.samsung.SamsungScanner
 import com.remote.control.data.update.UpdateRepositoryImpl
 import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepositoryImpl
@@ -62,6 +63,7 @@ fun AppNavigation() {
     val nsdScanner = remember { NsdScanner(context) }
     val airMouseController = remember { AirMouseController(context) }
     val samsungConnectionManager = remember { SamsungConnectionManager(context) }
+    val samsungScanner = remember { SamsungScanner(context) }
     val tvCompanionClient = remember { TvCompanionClient(context) }
     val viewModelFactory = remember {
         HomeViewModelFactory(
@@ -71,7 +73,8 @@ fun AppNavigation() {
             nsdScanner,
             airMouseController,
             samsungConnectionManager,
-            tvCompanionClient
+            tvCompanionClient,
+            samsungScanner
         )
     }
     val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)

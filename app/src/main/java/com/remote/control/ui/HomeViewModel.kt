@@ -9,6 +9,7 @@ import com.remote.control.data.device.CustomShortcutData
 import com.remote.control.data.device.Device
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.samsung.SamsungConnectionManager
+import com.remote.control.data.samsung.SamsungScanner
 import com.remote.control.data.wifi.DiscoveredTv
 import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepository
@@ -76,7 +77,8 @@ class HomeViewModel(
     private val nsdScanner: NsdScanner,
     private val airMouseController: AirMouseController,
     private val samsungConnectionManager: SamsungConnectionManager,
-    private val tvCompanionClient: TvCompanionClient
+    private val tvCompanionClient: TvCompanionClient,
+    private val samsungScanner: SamsungScanner
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RemoteState())
@@ -217,9 +219,34 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(isScanning = true)
         scanJob = viewModelScope.launch {
             try {
-                nsdScanner.discover().collect { list ->
+                combine(
+                    nsdScanner.discover(),
+                    samsungScanner.discoverSamsungTvs()
+                ) { nsdList, samsungList ->
+                    val mergedMap = LinkedHashMap<String, DiscoveredTv>()
+
+                    for (tv in nsdList) {
+                        mergedMap[tv.ip] = tv
+                    }
+
+                    for (samsung in samsungList) {
+                        val existing = mergedMap[samsung.ip]
+                        val displayName = when {
+                            samsung.name.isNotBlank() && !samsung.name.equals("Samsung Smart TV", ignoreCase = true) -> samsung.name
+                            existing != null && existing.name.isNotBlank() -> existing.name
+                            else -> "Samsung Smart TV"
+                        }
+                        mergedMap[samsung.ip] = DiscoveredTv(
+                            name = displayName,
+                            ip = samsung.ip,
+                            port = samsung.port
+                        )
+                    }
+
+                    mergedMap.values.toList()
+                }.collect { combinedList ->
                     _uiState.value = _uiState.value.copy(
-                        discoveredDevices = list,
+                        discoveredDevices = combinedList,
                         isScanning = true
                     )
                 }
@@ -564,12 +591,12 @@ class HomeViewModel(
 
     fun launchShortcut(shortcut: AppShortcut) {
         viewModelScope.launch {
-            if (shortcut.fallbackKey != null) {
-                sendKey(shortcut.fallbackKey)
+            if (_uiState.value.isSamsungMode) {
+                samsungConnectionManager.launchApp(shortcut.title)
                 return@launch
             }
-            if (_uiState.value.isSamsungMode) {
-                samsungConnectionManager.sendSamsungKey("KEY_HOME")
+            if (shortcut.fallbackKey != null) {
+                sendKey(shortcut.fallbackKey)
                 return@launch
             }
             if (shortcut.deepLink.isNotBlank()) {

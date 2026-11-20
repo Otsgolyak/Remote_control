@@ -151,7 +151,24 @@ fun PairingScreen(
                                     tint = if (isSelected) Color(0xFF34C759) else Color(0xFF00E5FF)
                                 )
                                 Column {
-                                    Text(device.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(device.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                        Surface(
+                                            color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (device.isSamsung) "Samsung Tizen" else "Android TV",
+                                                color = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                     Text("IP: ${device.ip}", color = Color.Gray, fontSize = 12.sp)
                                 }
                             }
@@ -227,19 +244,26 @@ fun PairingScreen(
                 }
             } else {
                 items(state.discoveredDevices) { tv ->
+                    val isSamsungTv = tv.port == 8001 || tv.name.contains("Samsung", ignoreCase = true)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF181822)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF), RoundedCornerShape(12.dp))
                             .clickable {
-                                val existing = savedDevices.find { it.ip == tv.ip }
-                                if (existing != null) {
-                                    homeViewModel.connectToSavedDevice(existing) {
+                                if (isSamsungTv) {
+                                    homeViewModel.connectToSamsungTv(tv.name, tv.ip) {
                                         onNavigateToHome()
                                     }
                                 } else {
-                                    homeViewModel.initiatePairing(tv.name, tv.ip)
+                                    val existing = savedDevices.find { it.ip == tv.ip }
+                                    if (existing != null) {
+                                        homeViewModel.connectToSavedDevice(existing) {
+                                            onNavigateToHome()
+                                        }
+                                    } else {
+                                        homeViewModel.initiatePairing(tv.name, tv.ip)
+                                    }
                                 }
                             }
                     ) {
@@ -252,26 +276,50 @@ fun PairingScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, tint = Color(0xFF00E5FF))
+                                Icon(Icons.Default.Wifi, contentDescription = null, tint = if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF))
                                 Column {
-                                    Text(tv.name, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(tv.name, color = Color.White, fontWeight = FontWeight.Bold)
+                                        Surface(
+                                            color = if (isSamsungTv) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isSamsungTv) "Samsung Tizen" else "Android TV",
+                                                color = if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                     Text("${tv.ip}:${tv.port}", color = Color.LightGray, fontSize = 12.sp)
                                 }
                             }
                             Button(
                                 onClick = {
-                                    val existing = savedDevices.find { it.ip == tv.ip }
-                                    if (existing != null) {
-                                        homeViewModel.connectToSavedDevice(existing) {
+                                    if (isSamsungTv) {
+                                        homeViewModel.connectToSamsungTv(tv.name, tv.ip) {
                                             onNavigateToHome()
                                         }
                                     } else {
-                                        homeViewModel.initiatePairing(tv.name, tv.ip)
+                                        val existing = savedDevices.find { it.ip == tv.ip }
+                                        if (existing != null) {
+                                            homeViewModel.connectToSavedDevice(existing) {
+                                                onNavigateToHome()
+                                            }
+                                        } else {
+                                            homeViewModel.initiatePairing(tv.name, tv.ip)
+                                        }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isSamsungTv) Color(0xFF007AFF) else Color(0xFFFF6D00))
                             ) {
                                 Text("Подключить", color = Color.White)
                             }
