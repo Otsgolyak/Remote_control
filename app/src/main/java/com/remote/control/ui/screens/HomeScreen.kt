@@ -38,9 +38,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.remote.control.data.bluetooth.DiscoveredBluetoothDevice
 import com.remote.control.data.update.UpdateRepositoryImpl
 import com.remote.control.ui.AppShortcut
 import com.remote.control.ui.HomeViewModel
+import com.remote.control.utils.Logger
 import kotlinx.coroutines.launch
 import remote.RemoteKeyCode
 
@@ -969,7 +971,7 @@ fun HomeScreen(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                        state.discoveredBtDevices.take(6).forEach { device ->
+                        for (device in state.discoveredBtDevices.take(6)) {
                             Button(
                                 onClick = {
                                     homeViewModel.connectBluetoothMouseToAddress(device.address)
@@ -1011,7 +1013,7 @@ fun HomeScreen(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                        bondedBtList.forEach { (btName, btAddr) ->
+                        for ((btName, btAddr) in bondedBtList) {
                             Button(
                                 onClick = {
                                     homeViewModel.connectBluetoothMouseToAddress(btAddr)

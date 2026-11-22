@@ -30,6 +30,13 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+data class DiscoveredBluetoothDevice(
+    val device: BluetoothDevice,
+    val name: String,
+    val address: String,
+    val rssi: Int
+)
+
 @SuppressLint("MissingPermission")
 class AirMouseController(context: Context) : SensorEventListener {
 
@@ -110,6 +117,12 @@ class AirMouseController(context: Context) : SensorEventListener {
     private val _discoveredDevices = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val discoveredDevices: StateFlow<List<Pair<String, String>>> = _discoveredDevices.asStateFlow()
 
+    private val _isBtScanning = MutableStateFlow(false)
+    val isBtScanning: StateFlow<Boolean> = _isBtScanning.asStateFlow()
+
+    private val _discoveredBtDevices = MutableStateFlow<List<DiscoveredBluetoothDevice>>(emptyList())
+    val discoveredBtDevices: StateFlow<List<DiscoveredBluetoothDevice>> = _discoveredBtDevices.asStateFlow()
+
     private val controllerScope = CoroutineScope(Dispatchers.Main + Job())
     private var scanTimeoutJob: Job? = null
     private var isReceiverRegistered = false
@@ -134,6 +147,7 @@ class AirMouseController(context: Context) : SensorEventListener {
                     Logger.log("BT Сканер: найдено устройство \"$devName\" [$address] (RSSI=$rssi dBm)")
                 }
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                    _isBtScanning.value = false
                     Logger.log("BT Сканер: сканирование эфира завершено, всего найдено ${discoveredDevicesMap.size} устройств")
                 }
             }
@@ -142,13 +156,19 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     private fun updateDiscoveredList() {
         // Сортировка по уровню сигнала: от наибольшего (ближайший ТВ) к наименьшему
-        val sorted = discoveredDevicesMap.values
+        val sortedList = discoveredDevicesMap.values
             .sortedByDescending { it.second }
             .map { (dev, rssi) ->
                 val name = dev.name ?: "Bluetooth Device"
-                "$name ($rssi dBm)" to dev.address
+                DiscoveredBluetoothDevice(
+                    device = dev,
+                    name = name,
+                    address = dev.address ?: "",
+                    rssi = rssi
+                )
             }
-        _discoveredDevices.value = sorted
+        _discoveredBtDevices.value = sortedList
+        _discoveredDevices.value = sortedList.map { "${it.name} (${it.rssi} dBm)" to it.address }
     }
 
     var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
@@ -334,6 +354,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             adapter.cancelDiscovery()
         }
         val scanStarted = adapter.startDiscovery()
+        _isBtScanning.value = scanStarted
         Logger.log("BT Сканер: запуск startDiscovery() -> result=$scanStarted")
         _btStatus.value = "Поиск Bluetooth ТВ рядом..."
 
@@ -344,6 +365,7 @@ class AirMouseController(context: Context) : SensorEventListener {
                 adapter.cancelDiscovery()
                 Logger.log("BT Сканер: авто-остановка по тайм-ауту 12с")
             }
+            _isBtScanning.value = false
         }
     }
 
