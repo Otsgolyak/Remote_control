@@ -1,8 +1,11 @@
 package com.remote.control
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
@@ -31,10 +34,22 @@ import com.remote.control.ui.screens.SettingsScreen
 import com.remote.control.utils.Logger
 
 class MainActivity : ComponentActivity() {
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        Logger.log(
+            "Разрешения при старте: RECORD_AUDIO=${grants[Manifest.permission.RECORD_AUDIO] == true}, " +
+                "BLUETOOTH_CONNECT=${grants[Manifest.permission.BLUETOOTH_CONNECT] == true}"
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Logger.init(applicationContext)
         UpdateRepositoryImpl(applicationContext).cleanupOldApks(applicationContext)
+
+        requestPermissionsOnce()
 
         setContent {
             MaterialTheme(
@@ -50,6 +65,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Запрашивает критичные разрешения ровно один раз при запуске приложения.
+     * Система Android запоминает выбор, поэтому при последующих запусках
+     * диалог не появляется повторно.
+     */
+    private fun requestPermissionsOnce() {
+        val permissions = mutableListOf<String>()
+        permissions.add(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        permissionLauncher.launch(permissions.toTypedArray())
     }
 }
 
