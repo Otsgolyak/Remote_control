@@ -19,23 +19,21 @@ class AdbRepositoryImpl(
      * либо генерирует её один раз и сохраняет. Благодаря этому телевизор
      * не запрашивает подтверждение отладки при каждом запуске приложения.
      */
+    /**
+     * Возвращает пару ADB-ключей из приватного каталога приложения.
+     * Метод `AdbKeyPair.read` загружает существующие ключи, а если их нет —
+     * автоматически генерирует и сохраняет новую пару.
+     */
     private fun loadOrCreateKeyPair(): AdbKeyPair {
         val privateKeyFile = File(context.filesDir, "adbkey")
         val publicKeyFile = File(context.filesDir, "adbkey.pub")
-        return try {
-            AdbKeyPair.read(privateKeyFile, publicKeyFile).also {
-                Logger.log("ADB: загружена сохраненная пара ключей (${privateKeyFile.name})")
-            } ?: run {
-                AdbKeyPair.create(privateKeyFile, publicKeyFile).also {
-                    Logger.log("ADB: сгенерирована и сохранена новая пара ключей (${privateKeyFile.name})")
-                }
-            }
-        } catch (e: Exception) {
-            Logger.log("ADB: ошибка работы с ключами (${e.message}), генерируем заново")
-            privateKeyFile.delete()
-            publicKeyFile.delete()
-            AdbKeyPair.create(privateKeyFile, publicKeyFile)
-        }
+        val existed = privateKeyFile.exists() && publicKeyFile.exists()
+        val keyPair = AdbKeyPair.read(privateKeyFile, publicKeyFile)
+        Logger.log(
+            if (existed) "ADB: загружена сохраненная пара ключей (${privateKeyFile.name})"
+            else "ADB: сгенерирована и сохранена новая пара ключей (${privateKeyFile.name})"
+        )
+        return keyPair
     }
 
     override suspend fun listInstalledApps(): List<String> = withContext(Dispatchers.IO) {
