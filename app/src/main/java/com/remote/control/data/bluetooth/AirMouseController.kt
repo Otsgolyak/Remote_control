@@ -7,16 +7,25 @@ import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import com.remote.control.utils.Logger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -95,6 +104,52 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     private val _btStatus = MutableStateFlow("Ожидание Bluetooth HID")
     val btStatus: StateFlow<String> = _btStatus.asStateFlow()
+
+    // Хранилище обнаруженных Bluetooth-устройств с замером мощности сигнала (RSSI)
+    private val discoveredDevicesMap = ConcurrentHashMap<String, Pair<BluetoothDevice, Int>>()
+    private val _discoveredDevices = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val discoveredDevices: StateFlow<List<Pair<String, String>>> = _discoveredDevices.asStateFlow()
+
+    private val controllerScope = CoroutineScope(Dispatchers.Main + Job())
+    private var scanTimeoutJob: Job? = null
+    private var isReceiverRegistered = false
+
+    private val discoveryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                BluetoothDevice.ACTION_FOUND -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    } ?: return
+
+                    val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE).toInt()
+                    val devName = device.name ?: "Неизвестное ТВ"
+                    val address = device.address ?: return
+
+                    discoveredDevicesMap[address] = Pair(device, rssi)
+                    updateDiscoveredList()
+                    Logger.log("BT Сканер: найдено устройство \"$devName\" [$address] (RSSI=$rssi dBm)")
+                }
+                BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                    Logger.log("BT Сканер: сканирование эфира завершено, всего найдено ${discoveredDevicesMap.size} устройств")
+                }
+            }
+        }
+    }
+
+    private fun updateDiscoveredList() {
+        // Сортировка по уровню сигнала: от наибольшего (ближайший ТВ) к наименьшему
+        val sorted = discoveredDevicesMap.values
+            .sortedByDescending { it.second }
+            .map { (dev, rssi) ->
+                val name = dev.name ?: "Bluetooth Device"
+                "$name ($rssi dBm)" to dev.address
+            }
+        _discoveredDevices.value = sorted
+    }
 
     var onFallbackDirection: ((dx: Float, dy: Float) -> Unit)? = null
     var onVisualCursorDelta: ((dx: Float, dy: Float) -> Unit)? = null
@@ -196,15 +251,18 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     private fun registerHidApp() {
         val hid = bluetoothHidDevice ?: return
+        // Указываем понятное имя устройства в дескрипторе Bluetooth SDP
+        val deviceModel = Build.MODEL ?: "Phone"
+        val appName = "$deviceModel (Air Mouse)"
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-            "Xiaomi TV Air Mouse",
-            "Android TV Bluetooth HID Mouse",
-            "Xiaomi",
+            appName,
+            "Bluetooth HID Mouse for Android TV",
+            Build.MANUFACTURER ?: "Android",
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             MOUSE_REPORT_DESCRIPTOR
         )
         val regResult = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
-        Logger.log("BT HID: registerApp вызван -> result=$regResult")
+        Logger.log("BT HID: registerApp вызван для \"$appName\" -> result=$regResult")
     }
 
     fun connectToDevice(device: BluetoothDevice) {
@@ -246,6 +304,119 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     fun getBondedDevices(): List<BluetoothDevice> {
         return bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
+    }
+
+    /**
+     * Запускает тихое сканирование Bluetooth-эфира с измерением RSSI.
+     */
+    fun startBluetoothDiscovery() {
+        val adapter = bluetoothAdapter ?: return
+        if (!adapter.isEnabled) {
+            _btStatus.value = "Включите Bluetooth"
+            return
+        }
+
+        initBluetoothHid()
+
+        if (!isReceiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_FOUND)
+                addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+            }
+            appContext.registerReceiver(discoveryReceiver, filter)
+            isReceiverRegistered = true
+        }
+
+        discoveredDevicesMap.clear()
+        _discoveredDevices.value = emptyList()
+
+        if (adapter.isDiscovering) {
+            adapter.cancelDiscovery()
+        }
+        val scanStarted = adapter.startDiscovery()
+        Logger.log("BT Сканер: запуск startDiscovery() -> result=$scanStarted")
+        _btStatus.value = "Поиск Bluetooth ТВ рядом..."
+
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = controllerScope.launch {
+            delay(12000L) // 12 секунд активного сканирования
+            if (adapter.isDiscovering) {
+                adapter.cancelDiscovery()
+                Logger.log("BT Сканер: авто-остановка по тайм-ауту 12с")
+            }
+        }
+    }
+
+    /**
+     * Автоматически перебирает найденные ТВ от максимального RSSI (ближайший)
+     * к меньшему и тихо выполняет сопряжение и подключение мыши.
+     */
+    fun autoConnectStrongestTv(targetTvName: String = "", onCandidateTried: ((String) -> Unit)? = null) {
+        val adapter = bluetoothAdapter ?: return
+        if (!adapter.isEnabled) return
+
+        initBluetoothHid()
+
+        // Сначала проверяем уже сопряженные устройства (bonded)
+        val bondedTvs = adapter.bondedDevices.orEmpty().filter { dev ->
+            val n = dev.name ?: ""
+            n.contains("tv", ignoreCase = true) ||
+                n.contains("xiaomi", ignoreCase = true) ||
+                n.contains("mi", ignoreCase = true) ||
+                n.contains("samsung", ignoreCase = true) ||
+                (targetTvName.isNotBlank() && n.contains(targetTvName, ignoreCase = true))
+        }
+
+        if (bondedTvs.isNotEmpty()) {
+            val target = bondedTvs.first()
+            Logger.log("BT Автоподключение: найден уже спаренный ТВ \"${target.name}\" [${target.address}], подключаем...")
+            _btStatus.value = "Подключение к спаренному ТВ (${target.name})..."
+            connectToDevice(target)
+            return
+        }
+
+        // Если спаренных нет — запускаем сканирование и подбор по силе сигнала
+        startBluetoothDiscovery()
+
+        controllerScope.launch {
+            _btStatus.value = "Поиск ближайшего ТВ по мощности сигнала..."
+            delay(3500L) // Даем 3.5 секунды для сбора первых пакетов RSSI
+
+            val candidates = discoveredDevicesMap.values
+                .sortedByDescending { it.second } // От самого сильного сигнала (ближайший к телефону)
+                .map { it.first }
+
+            if (candidates.isEmpty()) {
+                Logger.log("BT Автоподключение: пока не найдено подходящих Bluetooth ТВ в эфире")
+                _btStatus.value = "ТВ не обнаружен, сделайте телефон видимым"
+                return@launch
+            }
+
+            for (device in candidates) {
+                val devName = device.name ?: "TV"
+                val devRssi = discoveredDevicesMap[device.address]?.second ?: 0
+                Logger.log("BT Автоподключение: попытка сопряжения с кандидатом \"$devName\" [${device.address}], сигнал=$devRssi dBm")
+                _btStatus.value = "Рукопожатие с $devName ($devRssi dBm)..."
+                onCandidateTried?.invoke(devName)
+
+                // Инициируем стандартное системное сопряжение
+                try {
+                    device.createBond()
+                } catch (e: Exception) {
+                    Logger.log("BT createBond ошибка: ${e.message}")
+                }
+
+                delay(1200L)
+                connectToDevice(device)
+
+                delay(1500L)
+                if (_isBtConnected.value) {
+                    Logger.log("BT Автоподключение: успешно подключено к \"$devName\"!")
+                    _btStatus.value = "Курсор подключен к $devName"
+                    break
+                }
+            }
+        }
     }
 
     fun makeDiscoverable(context: Context, durationSeconds: Int = 300) {
@@ -383,6 +554,11 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     fun release() {
         setGyroEnabled(false)
+        if (isReceiverRegistered) {
+            runCatching { appContext.unregisterReceiver(discoveryReceiver) }
+            isReceiverRegistered = false
+        }
+        scanTimeoutJob?.cancel()
         val hid = bluetoothHidDevice
         if (hid != null) {
             connectedHost?.let { hid.disconnect(it) }

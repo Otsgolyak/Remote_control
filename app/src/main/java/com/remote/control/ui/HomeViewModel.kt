@@ -64,6 +64,8 @@ data class RemoteState(
     val imeVisible: Boolean = false,
     val isGyroEnabled: Boolean = false,
     val isBtMouseConnected: Boolean = false,
+    val isBtScanning: Boolean = false,
+    val discoveredBtDevices: List<com.remote.control.data.bluetooth.DiscoveredBluetoothDevice> = emptyList(),
     val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор на ТВ",
     val apps: List<AppShortcut> = defaultShortcuts,
     val mouseSensitivity: Float = 1.5f,
@@ -158,6 +160,20 @@ class HomeViewModel(
         viewModelScope.launch {
             airMouseController.btStatus.collect { status ->
                 _uiState.value = _uiState.value.copy(btMouseStatus = status)
+            }
+        }
+
+        // Подписка на статус Bluetooth-сканирования для отображения индикатора загрузки
+        viewModelScope.launch {
+            airMouseController.isBtScanning.collect { scanning ->
+                _uiState.value = _uiState.value.copy(isBtScanning = scanning)
+            }
+        }
+
+        // Подписка на список найденных Bluetooth-устройств (отсортированных по убыванию RSSI)
+        viewModelScope.launch {
+            airMouseController.discoveredBtDevices.collect { list ->
+                _uiState.value = _uiState.value.copy(discoveredBtDevices = list)
             }
         }
 
@@ -585,6 +601,26 @@ class HomeViewModel(
 
     fun connectBluetoothMouse() {
         airMouseController.initBluetoothHid()
+    }
+
+    /**
+     * Автоматическое фоновое рукопожатие с ближайшим ТВ:
+     * 1) Проверяет уже сопряженные устройства.
+     * 2) Если сопряженного нет - запускает тихое сканирование BT, сортирует устройства по уровню сигнала (RSSI)
+     *    и выполняет сопряжение (createBond) и HID-подключение от самого сильного сигнала к слабому.
+     */
+    fun autoConnectBluetoothMouse() {
+        val targetName = _uiState.value.selectedDeviceName
+        Logger.log("HomeViewModel.autoConnectBluetoothMouse: запуск тихого подключения к ТВ (targetName='$targetName')")
+        airMouseController.autoConnectStrongestTv(targetName)
+    }
+
+    /**
+     * Запуск сканирования окружающих BT-устройств с фиксацией уровня сигнала RSSI.
+     */
+    fun startBluetoothDiscovery() {
+        Logger.log("HomeViewModel.startBluetoothDiscovery: ручной запуск сканирования устройств")
+        airMouseController.startBluetoothDiscovery()
     }
 
     @android.annotation.SuppressLint("MissingPermission")

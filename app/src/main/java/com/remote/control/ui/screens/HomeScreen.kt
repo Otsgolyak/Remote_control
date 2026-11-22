@@ -15,8 +15,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -86,7 +88,10 @@ fun HomeScreen(
     val btPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        homeViewModel.connectBluetoothMouse()
+        // После предоставления разрешений Bluetooth:
+        // запускаем тихое рукопожатие с ближайшим ТВ по силе сигнала RSSI
+        Logger.log("HomeScreen: получены разрешения Bluetooth, запуск autoConnectBluetoothMouse")
+        homeViewModel.autoConnectBluetoothMouse()
         bondedBtList = homeViewModel.getBondedBluetoothDevices()
         showBtMouseDialog = true
     }
@@ -460,11 +465,12 @@ fun HomeScreen(
                                             btPermissionLauncher.launch(
                                                 arrayOf(
                                                     Manifest.permission.BLUETOOTH_CONNECT,
-                                                    Manifest.permission.BLUETOOTH_ADVERTISE
+                                                    Manifest.permission.BLUETOOTH_ADVERTISE,
+                                                    Manifest.permission.BLUETOOTH_SCAN
                                                 )
                                             )
                                         } else {
-                                            homeViewModel.connectBluetoothMouse()
+                                            homeViewModel.autoConnectBluetoothMouse()
                                             bondedBtList = homeViewModel.getBondedBluetoothDevices()
                                             showBtMouseDialog = true
                                         }
@@ -879,31 +885,131 @@ fun HomeScreen(
     }
 
     // Bluetooth Mouse Selection Dialog
+    // Поддерживает:
+    // 1) Тихое автоподключение к ближайшему ТВ по силе сигнала (RSSI)
+    // 2) Выбор из найденных рядом устройств (отсортированных по RSSI)
+    // 3) Выбор из ранее сопряженных устройств
+    // 4) Кнопку включения видимости телефона
     if (showBtMouseDialog) {
         AlertDialog(
             onDismissRequest = { showBtMouseDialog = false },
             containerColor = Color(0xFF1A1A24),
             title = {
-                Text(
-                    "Bluetooth Аэромышь (HID Курсор)",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mouse, contentDescription = null, tint = Color(0xFF00E5FF))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Bluetooth Аэромышь (HID Курсор)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (bondedBtList.isEmpty()) {
-                        Text(
-                            "Нет сопряженных Bluetooth-устройств. Нажмите кнопку ниже, чтобы сделать телефон видимым, и выберите его в настройках Bluetooth на ТВ.",
-                            color = Color.LightGray,
-                            fontSize = 13.sp
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Информационный бейдж текущего статуса
+                    Surface(
+                        color = Color(0xFF23232E),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (state.isBtScanning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF00E5FF)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = state.btMouseStatus,
+                                color = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Кнопка быстрого автоподключения к ближайшему ТВ (по уровню сигнала)
+                    Button(
+                        onClick = {
+                            homeViewModel.autoConnectBluetoothMouse()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(16.dp)
                         )
-                    } else {
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            "Выберите ваш ТВ из сопряженных Bluetooth-устройств:",
+                            "Автоподключение к ближайшему ТВ",
+                            color = Color.Black,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Список найденных рядом устройств (по убыванию RSSI)
+                    if (state.discoveredBtDevices.isNotEmpty()) {
+                        Text(
+                            "Найдено рядом (по уровню сигнала):",
                             color = Color.LightGray,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        state.discoveredBtDevices.take(6).forEach { device ->
+                            Button(
+                                onClick = {
+                                    homeViewModel.connectBluetoothMouseToAddress(device.address)
+                                    showBtMouseDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        device.name,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "${device.rssi} dBm",
+                                        color = Color(0xFF34C759),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Список уже сопряженных устройств
+                    if (bondedBtList.isNotEmpty()) {
+                        Text(
+                            "Сопряженные устройства:",
+                            color = Color.LightGray,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         bondedBtList.forEach { (btName, btAddr) ->
                             Button(
@@ -912,7 +1018,7 @@ fun HomeScreen(
                                     showBtMouseDialog = false
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E28))
                             ) {
                                 Text(
                                     "$btName ($btAddr)",
@@ -923,7 +1029,15 @@ fun HomeScreen(
                                 )
                             }
                         }
+                    } else if (state.discoveredBtDevices.isEmpty()) {
+                        Text(
+                            "Нет сопряженных устройств. Идет поиск окружающих устройств по сигналу или сделайте телефон видимым ниже.",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
                     }
+
+                    // Кнопка сделать телефон видимым для ТВ (ручное сопряжение со стороны ТВ)
                     Button(
                         onClick = {
                             homeViewModel.makeBluetoothDiscoverable(context)

@@ -39,7 +39,8 @@ class MainActivity : ComponentActivity() {
     ) { grants ->
         Logger.log(
             "Разрешения при старте: RECORD_AUDIO=${grants[Manifest.permission.RECORD_AUDIO] == true}, " +
-                "BLUETOOTH_CONNECT=${grants[Manifest.permission.BLUETOOTH_CONNECT] == true}"
+                "BLUETOOTH_CONNECT=${grants[Manifest.permission.BLUETOOTH_CONNECT] == true}, " +
+                "BLUETOOTH_SCAN=${grants[Manifest.permission.BLUETOOTH_SCAN] == true}"
         )
     }
 
@@ -76,6 +77,10 @@ class MainActivity : ComponentActivity() {
         permissions.add(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        } else {
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
         permissionLauncher.launch(permissions.toTypedArray())
     }
