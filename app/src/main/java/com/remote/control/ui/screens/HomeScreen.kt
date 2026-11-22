@@ -65,6 +65,8 @@ fun HomeScreen(
     var showBtMouseDialog by remember { mutableStateOf(false) }
     var bondedBtList by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
 
+    var showSourceDialog by remember { mutableStateOf(false) }
+
     val tabs = listOf("D-Pad", "Air Mouse", "Клавиатура")
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -122,6 +124,7 @@ fun HomeScreen(
 
     fun pressKey(keyCode: RemoteKeyCode) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        com.remote.control.utils.Logger.log("HomeScreen UI: Нажата кнопка ${keyCode.name}")
         homeViewModel.sendKey(keyCode)
     }
 
@@ -668,18 +671,23 @@ fun HomeScreen(
                 }
             }
 
-            // 4. Navigation & Voice Row
+            // 4. Navigation & Voice Row (Назад, Голос, Домой)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilledTonalIconButton(
+                    // Явная кнопка "Назад" с понятной подписью
+                    FilledTonalButton(
                         onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
-                        modifier = Modifier.size(56.dp)
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF222230)),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Color(0xFF00E5FF))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Назад", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
                     Box(
@@ -702,11 +710,16 @@ fun HomeScreen(
                         )
                     }
 
-                    FilledTonalIconButton(
+                    // Кнопка "Домой"
+                    FilledTonalButton(
                         onClick = { pressKey(RemoteKeyCode.KEYCODE_HOME) },
-                        modifier = Modifier.size(56.dp)
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF222230)),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Home, contentDescription = "Домой")
+                        Icon(Icons.Default.Home, contentDescription = "Домой", tint = Color(0xFFFF6D00))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Домой", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
                 if (state.isVoiceActive) {
@@ -720,7 +733,7 @@ fun HomeScreen(
                 }
             }
 
-            // 5. Bottom Volume, Source & Exit Row
+            // 5. Bottom Volume, Back, Source & Exit Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -735,8 +748,23 @@ fun HomeScreen(
                 Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_UP) }) {
                     Text("VOL +")
                 }
-                IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_TV_INPUT) }) {
-                    Icon(Icons.Default.Input, contentDescription = "Источник (HDMI)", tint = Color(0xFF00E5FF))
+                // Дополнительная кнопка быстрого возврата прямо под большим пальцем
+                FilledTonalIconButton(
+                    onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF232332))
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Color(0xFF00E5FF))
+                }
+                // Кнопка выбора источника сигнала (HDMI 1/2/3/TV) с открытием меню
+                FilledTonalIconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        com.remote.control.utils.Logger.log("HomeScreen UI: Нажата кнопка Источник/HDMI -> открытие диалога выбора")
+                        showSourceDialog = true
+                    },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF232332))
+                ) {
+                    Icon(Icons.Default.Input, contentDescription = "Источник сигнала (HDMI)", tint = Color(0xFFFF6D00))
                 }
                 IconButton(
                     onClick = {
@@ -915,6 +943,86 @@ fun HomeScreen(
             confirmButton = {
                 TextButton(onClick = { showBtMouseDialog = false }) {
                     Text("Закрыть", color = Color(0xFF00E5FF))
+                }
+            }
+        )
+    }
+
+    // Source / HDMI Selection Dialog
+    // Позволяет выбрать конкретный вход (HDMI 1, HDMI 2, HDMI 3 или системное меню входов)
+    if (showSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showSourceDialog = false },
+            containerColor = Color(0xFF1A1A24),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Input, contentDescription = null, tint = Color(0xFFFF6D00))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Выбор источника сигнала", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Выберите вход телевизора для переключения:",
+                        color = Color.LightGray,
+                        fontSize = 13.sp
+                    )
+
+                    // Кнопка HDMI 1
+                    Button(
+                        onClick = {
+                            pressKey(RemoteKeyCode.KEYCODE_TV_INPUT_HDMI_1)
+                            showSourceDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                    ) {
+                        Text("HDMI 1", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Кнопка HDMI 2
+                    Button(
+                        onClick = {
+                            pressKey(RemoteKeyCode.KEYCODE_TV_INPUT_HDMI_2)
+                            showSourceDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                    ) {
+                        Text("HDMI 2", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Кнопка HDMI 3
+                    Button(
+                        onClick = {
+                            pressKey(RemoteKeyCode.KEYCODE_TV_INPUT_HDMI_3)
+                            showSourceDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                    ) {
+                        Text("HDMI 3", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Кнопка общего вызова меню входов (TV_INPUT)
+                    OutlinedButton(
+                        onClick = {
+                            pressKey(RemoteKeyCode.KEYCODE_TV_INPUT)
+                            showSourceDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Меню входов ТВ (Source / Input)", color = Color(0xFF00E5FF))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSourceDialog = false }) {
+                    Text("Отмена", color = Color.Gray)
                 }
             }
         )

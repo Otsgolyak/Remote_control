@@ -480,9 +480,16 @@ class HomeViewModel(
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            if (_uiState.value.isSamsungMode) {
+            val isSamsung = _uiState.value.isSamsungMode
+            val targetIp = _uiState.value.selectedDeviceIp
+            Logger.log("HomeViewModel.sendKey: старт отправки ${keyCode.name} (mode=${if (isSamsung) "Samsung" else "AndroidTV"}, ip=$targetIp)")
+
+            if (isSamsung) {
                 if (!samsungConnectionManager.isConnected.value) {
-                    val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                    val ip = targetIp ?: run {
+                        Logger.log("HomeViewModel.sendKey: отмена, IP телевизора не выбран")
+                        return@launch
+                    }
                     if (now - lastReconnectAttemptTimeMs >= 5000L) {
                         lastReconnectAttemptTimeMs = now
                         Logger.log("Переподключение к Samsung TV ($ip) перед отправкой ${keyCode.name}...")
@@ -490,21 +497,24 @@ class HomeViewModel(
                         delay(300)
                     }
                 }
-                Logger.log("Samsung Tizen sendKey: ${keyCode.name}")
+                Logger.log("Samsung Tizen sendKey: ${keyCode.name} -> отправка через WebSocket")
                 samsungConnectionManager.sendKey(keyCode)
                 return@launch
             }
 
             if (!connectionManager.isConnected.value) {
-                val ip = _uiState.value.selectedDeviceIp ?: return@launch
+                val ip = targetIp ?: run {
+                    Logger.log("HomeViewModel.sendKey: отмена, IP Android TV не выбран")
+                    return@launch
+                }
                 if (now - lastReconnectAttemptTimeMs >= 5000L) {
                     if (isConnecting.compareAndSet(false, true)) {
                         lastReconnectAttemptTimeMs = now
                         try {
-                            Logger.log("Переподключение к $ip перед отправкой ${keyCode.name}...")
+                            Logger.log("Переподключение к Android TV $ip перед отправкой ${keyCode.name}...")
                             connectionManager.connect(ip, 6466)
                         } catch (e: Exception) {
-                            Logger.log("Ошибка подключения: ${e.message}")
+                            Logger.log("Ошибка подключения к $ip: ${e.message}")
                         } finally {
                             isConnecting.set(false)
                         }
@@ -513,6 +523,9 @@ class HomeViewModel(
             }
             if (connectionManager.isConnected.value) {
                 connectionManager.sendKey(keyCode)
+                Logger.log("HomeViewModel.sendKey: клавиша ${keyCode.name} успешно передана в connectionManager")
+            } else {
+                Logger.log("HomeViewModel.sendKey: соединение с Android TV не активно, клавиша ${keyCode.name} не доставлена")
             }
         }
     }
