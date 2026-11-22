@@ -3,7 +3,6 @@ package com.remote.control.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remote.control.data.ConnectionManager
-import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.CustomShortcutData
 import com.remote.control.data.device.Device
@@ -78,7 +77,6 @@ class HomeViewModel(
     private val nsdScanner: NsdScanner,
     private val airMouseController: AirMouseController,
     private val samsungConnectionManager: SamsungConnectionManager,
-    private val tvCompanionClient: TvCompanionClient,
     private val samsungScanner: SamsungScanner
 ) : ViewModel() {
 
@@ -570,10 +568,6 @@ class HomeViewModel(
                 Logger.log("Голос не запущен: нет соединения с ТВ")
             }
         }
-    }
-
-    fun installTvCursorCompanion(onResult: (String) -> Unit) {
-        onResult("Используйте Bluetooth HID мышь (курсор работает без ADB)")
     }
 
     fun connectBluetoothMouse() {

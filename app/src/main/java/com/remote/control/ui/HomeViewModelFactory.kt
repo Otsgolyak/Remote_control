@@ -3,7 +3,6 @@ package com.remote.control.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.remote.control.data.ConnectionManager
-import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.samsung.SamsungConnectionManager
@@ -18,7 +17,6 @@ class HomeViewModelFactory(
     private val nsdScanner: NsdScanner,
     private val airMouseController: AirMouseController,
     private val samsungConnectionManager: SamsungConnectionManager,
-    private val tvCompanionClient: TvCompanionClient,
     private val samsungScanner: SamsungScanner
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -31,7 +29,6 @@ class HomeViewModelFactory(
                 nsdScanner,
                 airMouseController,
                 samsungConnectionManager,
-                tvCompanionClient,
                 samsungScanner
             ) as T
         }

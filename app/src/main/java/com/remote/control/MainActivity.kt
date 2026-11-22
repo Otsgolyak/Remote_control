@@ -18,7 +18,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.remote.control.data.ConnectionManagerImpl
-import com.remote.control.data.adb.TvCompanionClient
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
 import com.remote.control.data.samsung.SamsungConnectionManager
@@ -93,7 +92,6 @@ fun AppNavigation() {
     val airMouseController = remember { AirMouseController(context) }
     val samsungConnectionManager = remember { SamsungConnectionManager(context) }
     val samsungScanner = remember { SamsungScanner(context) }
-    val tvCompanionClient = remember { TvCompanionClient(context) }
     val viewModelFactory = remember {
         HomeViewModelFactory(
             repository,
@@ -102,7 +100,6 @@ fun AppNavigation() {
             nsdScanner,
             airMouseController,
             samsungConnectionManager,
-            tvCompanionClient,
             samsungScanner
         )
     }
