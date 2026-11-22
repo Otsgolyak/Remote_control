@@ -62,6 +62,7 @@ data class RemoteState(
     val pendingPairingIp: String = "",
     val pairingError: String? = null,
     val isVoiceActive: Boolean = false,
+    val imeVisible: Boolean = false,
     val isGyroEnabled: Boolean = false,
     val isBtMouseConnected: Boolean = false,
     val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор на ТВ",
@@ -135,6 +136,12 @@ class HomeViewModel(
         viewModelScope.launch {
             connectionManager.isVoiceActive.collect { active ->
                 _uiState.value = _uiState.value.copy(isVoiceActive = active)
+            }
+        }
+
+        viewModelScope.launch {
+            connectionManager.imeVisible.collect { visible ->
+                _uiState.value = _uiState.value.copy(imeVisible = visible)
             }
         }
 
@@ -525,6 +532,10 @@ class HomeViewModel(
             }
             connectionManager.sendText(text)
         }
+    }
+
+    fun dismissIme() {
+        connectionManager.dismissIme()
     }
 
     fun sendTextAsKeys(text: String) {

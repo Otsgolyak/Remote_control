@@ -85,6 +85,8 @@ class ConnectionManagerImpl(
     override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     private val _isVoiceActive = MutableStateFlow(false)
     override val isVoiceActive: StateFlow<Boolean> = _isVoiceActive.asStateFlow()
+    private val _imeVisible = MutableStateFlow(false)
+    override val imeVisible: StateFlow<Boolean> = _imeVisible.asStateFlow()
     private val _lastError = MutableStateFlow<String?>(null)
     override val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
@@ -199,6 +201,7 @@ class ConnectionManagerImpl(
                             fieldCounter = inject.textFieldStatus.counterField
                             hasImeCounter = imeCounter != 0
                             hasFieldCounter = fieldCounter != 0
+                            _imeVisible.value = true
                             Logger.log("IME поле активно (${inject.appInfo.appPackage}): ime=$imeCounter, field=$fieldCounter")
                         }
                         msg.hasRemoteImeShowRequest() -> {
@@ -206,6 +209,8 @@ class ConnectionManagerImpl(
                                 fieldCounter = msg.remoteImeShowRequest.remoteTextFieldStatus.counterField
                                 hasFieldCounter = true
                             }
+                            _imeVisible.value = true
+                            Logger.log("IME запрос клавиатуры (fieldCounter=$fieldCounter)")
                         }
                         msg.hasRemoteImeBatchEdit() -> {
                             if (!hasImeCounter) imeCounter = msg.remoteImeBatchEdit.imeCounter
@@ -441,10 +446,16 @@ class ConnectionManagerImpl(
         }
     }
 
+    override fun dismissIme() {
+        _imeVisible.value = false
+        Logger.log("IME клавиатура скрыта пользователем")
+    }
+
     override suspend fun disconnect() {
         val s = synchronized(disconnectLock) {
             currentConnectedIp = null
             _isVoiceActive.value = false
+            _imeVisible.value = false
             _isConnected.value = false
             runCatching { voiceChannel.close() }
             voiceSenderJob?.cancel()

@@ -9,6 +9,7 @@ interface ConnectionManager {
     val isConnected: StateFlow<Boolean>
     val lastError: StateFlow<String?>
     val isVoiceActive: StateFlow<Boolean>
+    val imeVisible: StateFlow<Boolean>
     suspend fun connect(ip: String, port: Int = 6466)
     suspend fun send(data: ByteArray)
     suspend fun sendMessage(message: RemoteMessage)
@@ -17,6 +18,7 @@ interface ConnectionManager {
     suspend fun sendCharKey(ch: Char)
     suspend fun startVoiceStream()
     suspend fun stopVoiceStream()
+    fun dismissIme()
     suspend fun disconnect()
     fun getSocket(): Socket?
 }
