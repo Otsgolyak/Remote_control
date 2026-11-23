@@ -194,9 +194,13 @@ class AirMouseController(context: Context) : SensorEventListener {
         }
     }
 
+    @Volatile
+    private var isAppRegistered = false
+
     private val hidCallback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             Logger.log("BT HID: onAppStatusChanged(registered=$registered, plugged=${pluggedDevice?.name}[${pluggedDevice?.address}])")
+            isAppRegistered = registered
             if (!registered) {
                 _isBtConnected.value = false
                 connectedHost = null
@@ -209,11 +213,6 @@ class AirMouseController(context: Context) : SensorEventListener {
             if (pluggedDevice != null) {
                 val connOk = hid.connect(pluggedDevice)
                 Logger.log("BT HID: onAppStatusChanged connect(plugged=${pluggedDevice.name}[${pluggedDevice.address}]) -> result=$connOk")
-            } else {
-                bluetoothAdapter?.bondedDevices?.forEach { device ->
-                    val connOk = hid.connect(device)
-                    Logger.log("BT HID: onAppStatusChanged connect(bonded=${device.name}[${device.address}]) -> result=$connOk")
-                }
             }
         }
 
@@ -271,6 +270,10 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     private fun registerHidApp() {
         val hid = bluetoothHidDevice ?: return
+        if (isAppRegistered) {
+            Logger.log("BT HID: registerHidApp() пропущено — приложение уже зарегистрировано")
+            return
+        }
         // Указываем понятное имя устройства в дескрипторе Bluetooth SDP
         val deviceModel = Build.MODEL ?: "Phone"
         val appName = "$deviceModel (Air Mouse)"
@@ -281,6 +284,12 @@ class AirMouseController(context: Context) : SensorEventListener {
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             MOUSE_REPORT_DESCRIPTOR
         )
+        // Если в системном стеке Bluetooth осталась зависшая сессия, сбрасываем ее
+        try {
+            hid.unregisterApp()
+        } catch (e: Exception) {
+            // ignore
+        }
         val regResult = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
         Logger.log("BT HID: registerApp вызван для \"$appName\" -> result=$regResult")
     }
@@ -370,8 +379,56 @@ class AirMouseController(context: Context) : SensorEventListener {
     }
 
     /**
-     * Автоматически перебирает найденные ТВ от максимального RSSI (ближайший)
-     * к меньшему и тихо выполняет сопряжение и подключение мыши.
+     * Проверяет, является ли устройство телевизором или медиаприставкой:
+     * - Исключает носимые/аудио устройства (watch, band, buds, headset, audio, speaker, charge, major, ble и т.д.).
+     * - Ищет совпадение по имени из Wi-Fi (targetTvName) или характерным ТВ-маркерам (xiaomi, mitv, mi tv, samsung, android tv и т.д.).
+     * - Важно: не использует одиночную подстроку "mi", чтобы исключить ложные срабатывания (например, TANK MINI_BLE).
+     */
+    fun isLikelyTv(device: BluetoothDevice, targetTvName: String = ""): Boolean {
+        val name = device.name ?: return false
+        val clean = name.trim()
+        if (clean.isBlank()) return false
+
+        val lower = clean.lowercase()
+
+        // Жестко отсекаем аудио, часы и фитнес-трекеры
+        if (lower.contains("watch") || lower.contains("band") || lower.contains("buds") ||
+            lower.contains("headset") || lower.contains("earphone") || lower.contains("audio") ||
+            lower.contains("speaker") || lower.contains("charge") || lower.contains("major") ||
+            lower.contains("gtrs") || lower.contains("erazer") ||
+            (lower.contains("ble") && !lower.contains("tv"))
+        ) {
+            return false
+        }
+
+        val target = targetTvName.trim()
+        if (target.isNotBlank() && !target.equals("TV", ignoreCase = true) && !target.equals("Android TV", ignoreCase = true)) {
+            if (clean.contains(target, ignoreCase = true) || target.contains(clean, ignoreCase = true)) {
+                return true
+            }
+        }
+
+        return lower.contains("xiaomi") ||
+            lower.contains("mi tv") ||
+            lower.contains("mitv") ||
+            lower.contains("mi-tv") ||
+            lower.contains("mibox") ||
+            lower.contains("mi box") ||
+            lower.contains("samsung") ||
+            lower.contains("tizen") ||
+            lower.contains("android tv") ||
+            lower.contains("google tv") ||
+            lower.contains("smart tv") ||
+            lower.contains("atv") ||
+            Regex("""\b(tv|appletv|firetv)\b""", RegexOption.IGNORE_CASE).containsMatchIn(clean)
+    }
+
+    /**
+     * Тихо находит ТВ в эфире:
+     * 1) Сначала проверяет сопряженные устройства.
+     * 2) Если ТВ среди них нет — запускает тихое сканирование эфира по уровню сигнала RSSI.
+     * 3) Перебирает найденные ТВ-кандидаты от самого сильного сигнала (ближайший ТВ) к меньшему,
+     *    выполняя тихое сопряжение (createBond) и HID-подключение.
      */
     fun autoConnectStrongestTv(targetTvName: String = "", onCandidateTried: ((String) -> Unit)? = null) {
         val adapter = bluetoothAdapter ?: return
@@ -379,14 +436,9 @@ class AirMouseController(context: Context) : SensorEventListener {
 
         initBluetoothHid()
 
-        // Сначала проверяем уже сопряженные устройства (bonded)
+        // Сначала проверяем уже сопряженные устройства (bonded), отсеивая посторонние (часы, колонки и т.п.)
         val bondedTvs = adapter.bondedDevices.orEmpty().filter { dev ->
-            val n = dev.name ?: ""
-            n.contains("tv", ignoreCase = true) ||
-                n.contains("xiaomi", ignoreCase = true) ||
-                n.contains("mi", ignoreCase = true) ||
-                n.contains("samsung", ignoreCase = true) ||
-                (targetTvName.isNotBlank() && n.contains(targetTvName, ignoreCase = true))
+            isLikelyTv(dev, targetTvName)
         }
 
         if (bondedTvs.isNotEmpty()) {
@@ -397,41 +449,58 @@ class AirMouseController(context: Context) : SensorEventListener {
             return
         }
 
-        // Если спаренных нет — запускаем сканирование и подбор по силе сигнала
+        // Если в сопряженных ТВ нет — тихо запускаем сканирование эфира
+        Logger.log("BT Автоподключение: в сопряженных ТВ не найден, запускаем тихое сканирование эфира по уровню RSSI...")
         startBluetoothDiscovery()
 
         controllerScope.launch {
-            _btStatus.value = "Поиск ближайшего ТВ по мощности сигнала..."
-            delay(3500L) // Даем 3.5 секунды для сбора первых пакетов RSSI
+            _btStatus.value = "Поиск ТВ рядом по уровню сигнала..."
+            delay(4000L) // Даем 4 секунды для сбора пакетов RSSI
 
+            // Сортируем: ТВ-кандидаты первыми, внутри по убыванию мощности RSSI (сильнейший = ближайший ТВ)
             val candidates = discoveredDevicesMap.values
-                .sortedByDescending { it.second } // От самого сильного сигнала (ближайший к телефону)
+                .filter { (dev, _) ->
+                    val n = dev.name?.lowercase() ?: ""
+                    !n.contains("watch") && !n.contains("buds") && !n.contains("audio") &&
+                        !n.contains("speaker") && !n.contains("ble")
+                }
+                .sortedWith(
+                    compareByDescending<Pair<BluetoothDevice, Int>> { isLikelyTv(it.first, targetTvName) }
+                        .thenByDescending { it.second }
+                )
                 .map { it.first }
 
             if (candidates.isEmpty()) {
-                Logger.log("BT Автоподключение: пока не найдено подходящих Bluetooth ТВ в эфире")
-                _btStatus.value = "ТВ не обнаружен, сделайте телефон видимым"
+                Logger.log("BT Автоподключение: подходящие ТВ в эфире не найдены")
+                _btStatus.value = "ТВ рядом не найден"
                 return@launch
             }
 
             for (device in candidates) {
                 val devName = device.name ?: "TV"
                 val devRssi = discoveredDevicesMap[device.address]?.second ?: 0
-                Logger.log("BT Автоподключение: попытка сопряжения с кандидатом \"$devName\" [${device.address}], сигнал=$devRssi dBm")
-                _btStatus.value = "Рукопожатие с $devName ($devRssi dBm)..."
+                Logger.log("BT Автоподключение: тихое рукопожатие с \"$devName\" [${device.address}], сигнал=$devRssi dBm")
+                _btStatus.value = "Подключение к $devName ($devRssi dBm)..."
                 onCandidateTried?.invoke(devName)
 
-                // Инициируем стандартное системное сопряжение
-                try {
-                    device.createBond()
-                } catch (e: Exception) {
-                    Logger.log("BT createBond ошибка: ${e.message}")
+                // Инициируем системное сопряжение, если устройство еще не спарено
+                if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                    try {
+                        device.createBond()
+                    } catch (e: Exception) {
+                        Logger.log("BT createBond ошибка: ${e.message}")
+                    }
+                    delay(1200L)
                 }
 
-                delay(1200L)
                 connectToDevice(device)
 
-                delay(1500L)
+                // Ожидаем установления соединения
+                for (step in 1..7) {
+                    delay(500L)
+                    if (_isBtConnected.value) break
+                }
+
                 if (_isBtConnected.value) {
                     Logger.log("BT Автоподключение: успешно подключено к \"$devName\"!")
                     _btStatus.value = "Курсор подключен к $devName"
