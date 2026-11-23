@@ -11,7 +11,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
+import com.remote.control.ui.theme.AppTheme
 import androidx.compose.material.icons.filled.BugReport
 import com.remote.control.data.report.BugReportResult
 import com.remote.control.data.report.BugReportSender
@@ -48,6 +50,8 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by homeViewModel.uiState.collectAsState()
+    val isDarkTheme by homeViewModel.isDarkTheme.collectAsState()
+    val colors = AppTheme.colors
     val logsText by Logger.logsFlow.collectAsState()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     val downloadProgress by updateRepository.downloadProgress.collectAsState()
@@ -56,14 +60,14 @@ fun SettingsScreen(
     var cleanResultDialog by remember { mutableStateOf<AdbCleanResult?>(null) }
 
     Scaffold(
-        containerColor = Color(0xFF0A0A0C),
+        containerColor = colors.background,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121216)),
-                title = { Text("Настройки и диагностика", color = Color.White) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.topBarBackground),
+                title = { Text("Настройки и диагностика", color = colors.textPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.textPrimary)
                     }
                 }
             )
@@ -78,37 +82,94 @@ fun SettingsScreen(
         ) {
             Text(
                 "Xiaomi TV Remote v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
-                color = Color(0xFF00E5FF),
+                color = colors.primary,
                 fontWeight = FontWeight.Bold
             )
 
+            // Тема оформления (Светлая / Тёмная)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, colors.cardBorder)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                            contentDescription = null,
+                            tint = if (isDarkTheme) colors.primary else Color(0xFFFFB300),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
+                            Text(
+                                "Тема оформления",
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                if (isDarkTheme) "Тёмная тема активна" else "Светлая тема активна",
+                                color = colors.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isDarkTheme,
+                        onCheckedChange = { homeViewModel.setDarkTheme(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.surface,
+                            checkedTrackColor = colors.primary,
+                            uncheckedThumbColor = colors.surface,
+                            uncheckedTrackColor = colors.divider
+                        )
+                    )
+                }
+            }
+
             // Air Mouse Sensitivity Card
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF16161E)),
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, colors.cardBorder)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
                         "Чувствительность аэромыши (Air Mouse): ${"%.1f".format(state.mouseSensitivity)}x",
-                        color = Color.White,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
                     Slider(
                         value = state.mouseSensitivity,
                         onValueChange = { homeViewModel.setSensitivity(it) },
-                        valueRange = 0.5f..3.5f
+                        valueRange = 0.5f..3.5f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.primary,
+                            activeTrackColor = colors.primary,
+                            inactiveTrackColor = colors.divider
+                        )
                     )
                 }
             }
 
             // TV Ad & Bloatware Cleaner Card
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.25f))
+                border = BorderStroke(1.dp, colors.success.copy(alpha = 0.35f))
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -126,12 +187,12 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.Security,
                                 contentDescription = null,
-                                tint = Color(0xFF34C759),
+                                tint = colors.success,
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
                                 "Очистка ТВ от рекламы и слежения",
-                                color = Color.White,
+                                color = colors.textPrimary,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp
                             )
@@ -140,7 +201,7 @@ fun SettingsScreen(
 
                     Text(
                         "Включает AdGuard DNS, блокирует рекламу Xiaomi/Google, чистит кэш и устанавливает Media Station X с порталом msx.cc.ua.",
-                        color = Color.LightGray,
+                        color = colors.textSecondary,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )
@@ -167,7 +228,7 @@ fun SettingsScreen(
                             },
                             modifier = Modifier.weight(1.3f),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.success)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -176,20 +237,20 @@ fun SettingsScreen(
                                 if (isCleaningTv) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(16.dp),
-                                        color = Color.Black,
+                                        color = Color.White,
                                         strokeWidth = 2.dp
                                     )
                                 } else {
                                     Icon(
                                         Icons.Default.CleaningServices,
                                         contentDescription = null,
-                                        tint = Color.Black,
+                                        tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
                                 Text(
                                     if (isCleaningTv) "Очистка..." else "Очистить ТВ",
-                                    color = Color.Black,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
@@ -211,12 +272,12 @@ fun SettingsScreen(
                             },
                             modifier = Modifier.weight(0.9f),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray),
-                            border = BorderStroke(1.dp, Color(0xFF2C2C3A))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textSecondary),
+                            border = BorderStroke(1.dp, colors.cardBorder)
                         ) {
                             Text(
                                 "Сброс",
-                                color = Color.LightGray,
+                                color = colors.textSecondary,
                                 fontSize = 12.sp
                             )
                         }
@@ -226,7 +287,7 @@ fun SettingsScreen(
                         Text(
                             if (state.isSamsungMode) "Очистка по ADB доступна только для Android TV"
                             else "Подключитесь к Android TV для выполнения очистки",
-                            color = Color(0xFFFF9500),
+                            color = colors.warning,
                             fontSize = 11.sp
                         )
                     }
@@ -234,9 +295,10 @@ fun SettingsScreen(
             }
 
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, colors.cardBorder)
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -249,17 +311,17 @@ fun SettingsScreen(
                     ) {
                         Text(
                             "Версия приложения",
-                            color = Color.White,
+                            color = colors.textPrimary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
                         Surface(
-                            color = Color(0xFF00E5FF).copy(alpha = 0.15f),
+                            color = colors.primary.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
                                 "v${BuildConfig.VERSION_NAME}",
-                                color = Color(0xFF00E5FF),
+                                color = colors.primary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -273,8 +335,8 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),
-                            color = Color(0xFF00E5FF),
-                            trackColor = Color(0xFF242436)
+                            color = colors.primary,
+                            trackColor = colors.divider
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -282,13 +344,13 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 "${downloadProgress.percent}%",
-                                color = Color(0xFF00E5FF),
+                                color = colors.primary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 "${downloadProgress.downloadedMb} / ${downloadProgress.totalMb} МБ",
-                                color = Color.Gray,
+                                color = colors.textSecondary,
                                 fontSize = 12.sp
                             )
                         }
@@ -312,7 +374,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -321,12 +383,12 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.CloudDownload,
                                 contentDescription = null,
-                                tint = Color.Black,
+                                tint = if (colors.isDark) Color.Black else Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 if (downloadProgress.isDownloading) "Загрузка обновления..." else "Проверить и обновить с GitHub",
-                                color = Color.Black,
+                                color = if (colors.isDark) Color.Black else Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -358,9 +420,9 @@ fun SettingsScreen(
                         }
                     },
                     modifier = Modifier.weight(1.5f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500).copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.warning.copy(alpha = 0.15f)),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFF9500).copy(alpha = 0.6f)),
+                    border = BorderStroke(1.dp, colors.warning.copy(alpha = 0.5f)),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -370,20 +432,20 @@ fun SettingsScreen(
                         if (isSendingBugReport) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = Color(0xFFFF9500),
+                                color = colors.warning,
                                 strokeWidth = 2.dp
                             )
                         } else {
                             Icon(
                                 Icons.Default.BugReport,
                                 contentDescription = null,
-                                tint = Color(0xFFFF9500),
+                                tint = colors.warning,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                         Text(
                             if (isSendingBugReport) "Отправка..." else "Создать репорт",
-                            color = Color(0xFFFF9500),
+                            color = colors.warning,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
@@ -395,9 +457,9 @@ fun SettingsScreen(
                         Logger.sendLogsByEmail(context)
                     },
                     modifier = Modifier.weight(1.1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF).copy(alpha = 0.18f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary.copy(alpha = 0.15f)),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -407,12 +469,12 @@ fun SettingsScreen(
                         Icon(
                             Icons.Default.Email,
                             contentDescription = null,
-                            tint = Color(0xFF00E5FF),
+                            tint = colors.primary,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
                             "Почта",
-                            color = Color(0xFF00E5FF),
+                            color = colors.primary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
@@ -427,8 +489,8 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.weight(0.9f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFF2C2C3A)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
+                    border = BorderStroke(1.dp, colors.cardBorder),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -438,10 +500,10 @@ fun SettingsScreen(
                         Icon(
                             Icons.Default.ContentCopy,
                             contentDescription = null,
-                            tint = Color.LightGray,
+                            tint = colors.textSecondary,
                             modifier = Modifier.size(14.dp)
                         )
-                        Text("Копия", fontSize = 11.sp)
+                        Text("Копия", fontSize = 11.sp, color = colors.textPrimary)
                     }
                 }
 
@@ -449,8 +511,8 @@ fun SettingsScreen(
                     onClick = { Logger.clearLogs() },
                     modifier = Modifier.weight(0.9f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF453A)),
-                    border = BorderStroke(1.dp, Color(0xFF3A2024)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
+                    border = BorderStroke(1.dp, colors.error.copy(alpha = 0.4f)),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -460,17 +522,17 @@ fun SettingsScreen(
                         Icon(
                             Icons.Default.DeleteOutline,
                             contentDescription = null,
-                            tint = Color(0xFFFF453A),
+                            tint = colors.error,
                             modifier = Modifier.size(14.dp)
                         )
-                        Text("Сброс", fontSize = 11.sp)
+                        Text("Сброс", fontSize = 11.sp, color = colors.error)
                     }
                 }
             }
 
             Text(
                 "Журнал событий (logs.txt → otsgolyak@gmail.com):",
-                color = Color.LightGray,
+                color = colors.textSecondary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -479,13 +541,16 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF14141C), RoundedCornerShape(8.dp))
+                    .background(
+                        if (colors.isDark) Color(0xFF14141C) else Color(0xFFEDF2F7),
+                        RoundedCornerShape(8.dp)
+                    )
                     .padding(10.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     text = logsText.ifBlank { "Логи инициализированы..." },
-                    color = Color(0xFF34C759),
+                    color = if (colors.isDark) Color(0xFF34C759) else Color(0xFF1B5E20),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp
                 )
@@ -496,11 +561,11 @@ fun SettingsScreen(
     cleanResultDialog?.let { result ->
         AlertDialog(
             onDismissRequest = { cleanResultDialog = null },
-            containerColor = Color(0xFF161622),
+            containerColor = colors.cardBackground,
             title = {
                 Text(
                     if (result.success) "Очистка завершена" else "Результат операции",
-                    color = if (result.success) Color(0xFF34C759) else Color(0xFFFF453A),
+                    color = if (result.success) colors.success else colors.error,
                     fontWeight = FontWeight.Bold
                 )
             },
@@ -509,19 +574,19 @@ fun SettingsScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(result.summary, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Divider(color = Color(0xFF2C2C3A), modifier = Modifier.padding(vertical = 4.dp))
+                    Text(result.summary, color = colors.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Divider(color = colors.divider, modifier = Modifier.padding(vertical = 4.dp))
                     result.details.forEach { detail ->
-                        Text(detail, color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        Text(detail, color = colors.textSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = { cleanResultDialog = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
-                    Text("OK", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("OK", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         )

@@ -43,6 +43,7 @@ import com.remote.control.data.bluetooth.DiscoveredBluetoothDevice
 import com.remote.control.data.update.UpdateRepositoryImpl
 import com.remote.control.ui.AppShortcut
 import com.remote.control.ui.HomeViewModel
+import com.remote.control.ui.theme.AppTheme
 import com.remote.control.utils.Logger
 import kotlinx.coroutines.launch
 import remote.RemoteKeyCode
@@ -55,6 +56,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val state by homeViewModel.uiState.collectAsState()
+    val colors = AppTheme.colors
     var selectedTab by remember { mutableIntStateOf(0) }
     var keyboardText by remember { mutableStateOf("") }
     var isUpdating by remember { mutableStateOf(false) }
@@ -135,7 +137,7 @@ fun HomeScreen(
     }
 
     val neonGradient = Brush.linearGradient(
-        colors = listOf(Color(0xFFFF6D00), Color(0xFF00E5FF))
+        colors = listOf(colors.secondary, colors.primary)
     )
 
     fun pressKey(keyCode: RemoteKeyCode) {
@@ -163,18 +165,18 @@ fun HomeScreen(
             "movie" -> Color(0xFFE50914)
             "video" -> Color(0xFF00A8E1)
             "web" -> Color(0xFF34C759)
-            "settings" -> Color(0xFF00E5FF)
+            "settings" -> colors.primary
             "apps" -> Color(0xFFFF9F0A)
-            else -> Color(0xFFFF6D00)
+            else -> colors.secondary
         }
     }
 
     Scaffold(
-        containerColor = Color(0xFF0A0A0C),
+        containerColor = colors.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF121216)
+                    containerColor = colors.topBarBackground
                 ),
                 navigationIcon = {
                     IconButton(
@@ -183,7 +185,7 @@ fun HomeScreen(
                         Icon(
                             Icons.Default.PowerSettingsNew,
                             contentDescription = "Power",
-                            tint = Color(0xFFFF3B30)
+                            tint = colors.error
                         )
                     }
                 },
@@ -205,7 +207,7 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     text = state.selectedDeviceName,
-                                    color = Color.White,
+                                    color = colors.textPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     maxLines = 1,
@@ -214,7 +216,7 @@ fun HomeScreen(
                                 Icon(
                                     Icons.Default.ArrowDropDown,
                                     contentDescription = "Выбрать ТВ",
-                                    tint = Color(0xFF00E5FF),
+                                    tint = colors.primary,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -226,11 +228,11 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(CircleShape)
-                                        .background(if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30))
+                                        .background(if (state.isConnected) colors.success else colors.error)
                                 )
                                 Text(
                                     text = state.status,
-                                    color = if (state.isConnected) Color(0xFF34C759) else Color(0xFFFF3B30),
+                                    color = if (state.isConnected) colors.success else colors.error,
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -248,7 +250,7 @@ fun HomeScreen(
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "Переименовать ТВ",
-                                    tint = Color(0xFF00E5FF),
+                                    tint = colors.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -257,10 +259,10 @@ fun HomeScreen(
                 },
                 actions = {
                     IconButton(onClick = onNavigateToPairing) {
-                        Icon(Icons.Default.Tv, contentDescription = "Список ТВ", tint = Color(0xFF00E5FF))
+                        Icon(Icons.Default.Tv, contentDescription = "Список ТВ", tint = colors.primary)
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Color.White)
+                        Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = colors.textPrimary)
                     }
                 }
             )
@@ -296,11 +298,11 @@ fun HomeScreen(
                 }
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .size(width = 84.dp, height = 72.dp)
-                            .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(14.dp))
+                            .border(1.dp, colors.primary, RoundedCornerShape(14.dp))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 shortcutTitle = ""
@@ -318,13 +320,13 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.AddCircleOutline,
                                 contentDescription = "Добавить",
-                                tint = Color(0xFF00E5FF),
+                                tint = colors.primary,
                                 modifier = Modifier.size(26.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "Добавить",
-                                color = Color(0xFF00E5FF),
+                                color = colors.primary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -336,9 +338,11 @@ fun HomeScreen(
             // 2. Mode Switcher Tabs
             TabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = Color(0xFF16161C),
-                contentColor = Color(0xFF00E5FF),
-                modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                containerColor = colors.cardBackground,
+                contentColor = colors.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, colors.cardBorder, RoundedCornerShape(12.dp))
             ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
@@ -350,7 +354,7 @@ fun HomeScreen(
                             }
                             selectedTab = index
                         },
-                        text = { Text(title, color = Color.White, fontSize = 13.sp) }
+                        text = { Text(title, color = if (selectedTab == index) colors.primary else colors.textSecondary, fontSize = 13.sp) }
                     )
                 }
             }
@@ -363,7 +367,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(248.dp)
                             .border(2.dp, neonGradient, CircleShape)
-                            .background(Color(0xFF14141A), CircleShape),
+                            .background(colors.dpadBackground, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         IconButton(
@@ -373,7 +377,7 @@ fun HomeScreen(
                                 .padding(top = 12.dp)
                                 .size(56.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowUp, "Up", tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.KeyboardArrowUp, "Up", tint = colors.dpadIcon, modifier = Modifier.size(40.dp))
                         }
                         IconButton(
                             onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_DOWN) },
@@ -382,7 +386,7 @@ fun HomeScreen(
                                 .padding(bottom = 12.dp)
                                 .size(56.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowDown, "Down", tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.KeyboardArrowDown, "Down", tint = colors.dpadIcon, modifier = Modifier.size(40.dp))
                         }
                         IconButton(
                             onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_LEFT) },
@@ -391,7 +395,7 @@ fun HomeScreen(
                                 .padding(start = 12.dp)
                                 .size(56.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowLeft, "Left", tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.KeyboardArrowLeft, "Left", tint = colors.dpadIcon, modifier = Modifier.size(40.dp))
                         }
                         IconButton(
                             onClick = { pressKey(RemoteKeyCode.KEYCODE_DPAD_RIGHT) },
@@ -400,19 +404,19 @@ fun HomeScreen(
                                 .padding(end = 12.dp)
                                 .size(56.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowRight, "Right", tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.KeyboardArrowRight, "Right", tint = colors.dpadIcon, modifier = Modifier.size(40.dp))
                         }
                         Box(
                             modifier = Modifier
                                 .size(82.dp)
                                 .align(Alignment.Center)
                                 .clip(CircleShape)
-                                .background(Color(0xFF23232E))
+                                .background(colors.dpadOk)
                                 .border(1.5.dp, neonGradient, CircleShape)
                                 .clickable { pressKey(RemoteKeyCode.KEYCODE_DPAD_CENTER) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("OK", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("OK", color = colors.dpadIcon, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         }
                     }
                 }
@@ -438,9 +442,15 @@ fun HomeScreen(
                                     onCheckedChange = { enabled ->
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         homeViewModel.setGyroEnabled(enabled)
-                                    }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = colors.surface,
+                                        checkedTrackColor = colors.primary,
+                                        uncheckedThumbColor = colors.surface,
+                                        uncheckedTrackColor = colors.divider
+                                    )
                                 )
-                                Text("Гироскоп", color = Color.White, fontSize = 13.sp)
+                                Text("Гироскоп", color = colors.textPrimary, fontSize = 13.sp)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Button(
@@ -459,21 +469,21 @@ fun HomeScreen(
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (state.isBtMouseConnected) Color(0xFF1E3A2B) else Color(0xFF23232E)
+                                        containerColor = if (state.isBtMouseConnected) colors.success.copy(alpha = 0.2f) else colors.actionButton
                                     ),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Mouse,
                                         contentDescription = null,
-                                        tint = if (state.isBtMouseConnected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                        tint = if (state.isBtMouseConnected) colors.success else colors.primary,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         if (state.isBtMouseConnected) "BT Курсор: ВКЛ" else "BT Мышь",
                                         fontSize = 11.sp,
-                                        color = Color.White
+                                        color = if (state.isBtMouseConnected) colors.success else colors.actionButtonText
                                     )
                                 }
                             }
@@ -485,7 +495,7 @@ fun HomeScreen(
                                 .height(155.dp)
                                 .clip(RoundedCornerShape(18.dp))
                                 .border(1.5.dp, neonGradient, RoundedCornerShape(18.dp))
-                                .background(Color(0xFF14141C))
+                                .background(colors.touchpadBackground)
                                 .pointerInput(Unit) {
                                     detectTapGestures(
                                         onTap = {
@@ -511,12 +521,12 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     "Тачпад (свайп = курсор, тап = ОК, 2x тап = центр)",
-                                    color = Color(0xFF777788),
+                                    color = colors.textSecondary,
                                     fontSize = 11.sp
                                 )
                                 Text(
                                     state.btMouseStatus,
-                                    color = Color(0xFF00E5FF),
+                                    color = colors.primary,
                                     fontSize = 10.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -532,8 +542,8 @@ fun HomeScreen(
                                     )
                                     .size(18.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFFFF6D00))
-                                    .border(2.dp, Color.White, CircleShape)
+                                    .background(colors.touchpadCursor)
+                                    .border(2.dp, colors.surface, CircleShape)
                             )
                         }
 
@@ -547,9 +557,9 @@ fun HomeScreen(
                                     homeViewModel.onMouseClick(left = true)
                                 },
                                 modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                             ) {
-                                Text("ЛКМ (OK)", color = Color.White, fontSize = 12.sp)
+                                Text("ЛКМ (OK)", color = colors.actionButtonText, fontSize = 12.sp)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -573,9 +583,9 @@ fun HomeScreen(
                                     homeViewModel.onMouseClick(left = false)
                                 },
                                 modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                             ) {
-                                Text("ПКМ", color = Color.White, fontSize = 12.sp)
+                                Text("ПКМ", color = colors.actionButtonText, fontSize = 12.sp)
                             }
                         }
                     }
@@ -584,7 +594,7 @@ fun HomeScreen(
                 2 -> {
                     // Keyboard Tab (Authentic RemoteImeBatchEdit + Key Fallback)
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C)),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -618,7 +628,7 @@ fun HomeScreen(
                                         homeViewModel.sendText(keyboardText)
                                     },
                                     modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.secondary)
                                 ) {
                                     Text("Вставить в поле ТВ", color = Color.White, fontSize = 12.sp)
                                 }
@@ -650,9 +660,9 @@ fun HomeScreen(
                                 Button(
                                     onClick = { pressKey(RemoteKeyCode.KEYCODE_ENTER) },
                                     modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                                 ) {
-                                    Text("Enter ↵", color = Color.Black, fontWeight = FontWeight.Bold)
+                                    Text("Enter ↵", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -670,13 +680,13 @@ fun HomeScreen(
                     // Явная кнопка "Назад" с понятной подписью
                     FilledTonalButton(
                         onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF222230)),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Color(0xFF00E5FF))
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.primary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Назад", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Назад", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
                     Box(
@@ -684,7 +694,7 @@ fun HomeScreen(
                             .size(72.dp)
                             .clip(CircleShape)
                             .border(2.dp, neonGradient, CircleShape)
-                            .background(if (state.isVoiceActive) Color(0xFF3A1818) else Color(0xFF1F1F28))
+                            .background(if (state.isVoiceActive) colors.error.copy(alpha = 0.25f) else colors.actionButton)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 launchPhoneSpeechToText()
@@ -694,7 +704,7 @@ fun HomeScreen(
                         Icon(
                             if (state.isVoiceActive) Icons.Default.MicNone else Icons.Default.Mic,
                             contentDescription = "Голосовой ввод",
-                            tint = if (state.isVoiceActive) Color(0xFFFF3B30) else Color(0xFF00E5FF),
+                            tint = if (state.isVoiceActive) colors.error else colors.primary,
                             modifier = Modifier.size(34.dp)
                         )
                     }
@@ -702,20 +712,20 @@ fun HomeScreen(
                     // Кнопка "Домой"
                     FilledTonalButton(
                         onClick = { pressKey(RemoteKeyCode.KEYCODE_HOME) },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF222230)),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Home, contentDescription = "Домой", tint = Color(0xFFFF6D00))
+                        Icon(Icons.Default.Home, contentDescription = "Домой", tint = colors.secondary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Домой", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Домой", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
                 if (state.isVoiceActive) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Говорите в микрофон телефона... Нажмите для отправки",
-                        color = Color(0xFFFF6D00),
+                        color = colors.secondary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -732,7 +742,7 @@ fun HomeScreen(
                     Text("VOL -")
                 }
                 IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_MUTE) }) {
-                    Icon(Icons.Default.VolumeOff, contentDescription = "Mute", tint = Color.White)
+                    Icon(Icons.Default.VolumeOff, contentDescription = "Mute", tint = colors.textPrimary)
                 }
                 Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_UP) }) {
                     Text("VOL +")
@@ -740,9 +750,9 @@ fun HomeScreen(
                 // Дополнительная кнопка быстрого возврата прямо под большим пальцем
                 FilledTonalIconButton(
                     onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF232332))
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.actionButton)
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Color(0xFF00E5FF))
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.primary)
                 }
                 // Кнопка выбора источника сигнала (HDMI 1/2/3/TV) с открытием меню
                 FilledTonalIconButton(
@@ -751,9 +761,9 @@ fun HomeScreen(
                         com.remote.control.utils.Logger.log("HomeScreen UI: Нажата кнопка Источник/HDMI -> открытие диалога выбора")
                         showSourceDialog = true
                     },
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF232332))
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.actionButton)
                 ) {
-                    Icon(Icons.Default.Input, contentDescription = "Источник сигнала (HDMI)", tint = Color(0xFFFF6D00))
+                    Icon(Icons.Default.Input, contentDescription = "Источник сигнала (HDMI)", tint = colors.secondary)
                 }
                 IconButton(
                     onClick = {
@@ -761,7 +771,7 @@ fun HomeScreen(
                         (context as? Activity)?.finishAffinity()
                     }
                 ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = "Выход", tint = Color(0xFFFF453A))
+                    Icon(Icons.Default.ExitToApp, contentDescription = "Выход", tint = colors.error)
                 }
             }
         }
@@ -771,8 +781,8 @@ fun HomeScreen(
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            containerColor = Color(0xFF1A1A24),
-            title = { Text("Переименовать ТВ", color = Color.White, fontWeight = FontWeight.Bold) },
+            containerColor = colors.cardBackground,
+            title = { Text("Переименовать ТВ", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = newTvName,
@@ -790,14 +800,14 @@ fun HomeScreen(
                         }
                         showRenameDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
-                    Text("Сохранить", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Сохранить", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Отмена", color = Color.Gray)
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )
@@ -811,7 +821,7 @@ fun HomeScreen(
                     showUpdateDialog = false
                 }
             },
-            containerColor = Color(0xFF161622),
+            containerColor = colors.cardBackground,
             shape = RoundedCornerShape(16.dp),
             title = {
                 Row(
@@ -821,12 +831,12 @@ fun HomeScreen(
                     Icon(
                         Icons.Default.CloudDownload,
                         contentDescription = null,
-                        tint = Color(0xFF00E5FF),
+                        tint = colors.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
                         "Доступно обновление",
-                        color = Color.White,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
@@ -836,7 +846,7 @@ fun HomeScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "Найдена новая версия $availableUpdateVersion (у вас установлена v${BuildConfig.VERSION_NAME}).",
-                        color = Color(0xFFCCCCCC),
+                        color = colors.textSecondary,
                         fontSize = 14.sp
                     )
                     if (downloadProgress.isDownloading) {
@@ -845,8 +855,8 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),
-                            color = Color(0xFF00E5FF),
-                            trackColor = Color(0xFF242436)
+                            color = colors.primary,
+                            trackColor = colors.divider
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -854,13 +864,13 @@ fun HomeScreen(
                         ) {
                             Text(
                                 text = "${downloadProgress.percent}%",
-                                color = Color(0xFF00E5FF),
+                                color = colors.primary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "${downloadProgress.downloadedMb} / ${downloadProgress.totalMb} МБ",
-                                color = Color.Gray,
+                                color = colors.textSecondary,
                                 fontSize = 12.sp
                             )
                         }
@@ -884,12 +894,12 @@ fun HomeScreen(
                         }
                     },
                     enabled = !downloadProgress.isDownloading,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
                         if (downloadProgress.isDownloading) "Загрузка..." else "Обновить сейчас",
-                        color = Color.Black,
+                        color = if (colors.isDark) Color.Black else Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -897,7 +907,7 @@ fun HomeScreen(
             dismissButton = {
                 if (!downloadProgress.isDownloading) {
                     TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("Позже", color = Color.Gray)
+                        Text("Позже", color = colors.textSecondary)
                     }
                 }
             }
@@ -914,11 +924,11 @@ fun HomeScreen(
         )
         AlertDialog(
             onDismissRequest = { showAddShortcutDialog = false },
-            containerColor = Color(0xFF1A1A24),
-            title = { Text("Добавить приложение", color = Color.White, fontWeight = FontWeight.Bold) },
+            containerColor = colors.cardBackground,
+            title = { Text("Добавить приложение", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Быстрые шаблоны:", color = Color.LightGray, fontSize = 12.sp)
+                    Text("Быстрые шаблоны:", color = colors.textSecondary, fontSize = 12.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(presets) { (pName, pUrl, pIcon) ->
                             SuggestionChip(
@@ -927,7 +937,7 @@ fun HomeScreen(
                                     shortcutUrl = pUrl
                                     shortcutIcon = pIcon
                                 },
-                                label = { Text(pName, color = Color.White, fontSize = 12.sp) }
+                                label = { Text(pName, color = colors.textPrimary, fontSize = 12.sp) }
                             )
                         }
                     }
@@ -955,14 +965,14 @@ fun HomeScreen(
                             showAddShortcutDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.success)
                 ) {
                     Text("Добавить", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddShortcutDialog = false }) {
-                    Text("Отмена", color = Color.Gray)
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )
@@ -973,12 +983,12 @@ fun HomeScreen(
     if (showSourceDialog) {
         AlertDialog(
             onDismissRequest = { showSourceDialog = false },
-            containerColor = Color(0xFF1A1A24),
+            containerColor = colors.cardBackground,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Input, contentDescription = null, tint = Color(0xFFFF6D00))
+                    Icon(Icons.Default.Input, contentDescription = null, tint = colors.secondary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Выбор источника сигнала", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Выбор источника сигнала", color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             },
             text = {
@@ -988,7 +998,7 @@ fun HomeScreen(
                 ) {
                     Text(
                         "Выберите вход телевизора для переключения:",
-                        color = Color.LightGray,
+                        color = colors.textSecondary,
                         fontSize = 13.sp
                     )
 
@@ -999,9 +1009,9 @@ fun HomeScreen(
                             showSourceDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                     ) {
-                        Text("HDMI 1", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("HDMI 1", color = colors.actionButtonText, fontWeight = FontWeight.Bold)
                     }
 
                     // Кнопка HDMI 2
@@ -1011,9 +1021,9 @@ fun HomeScreen(
                             showSourceDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                     ) {
-                        Text("HDMI 2", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("HDMI 2", color = colors.actionButtonText, fontWeight = FontWeight.Bold)
                     }
 
                     // Кнопка HDMI 3
@@ -1023,9 +1033,9 @@ fun HomeScreen(
                             showSourceDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232332))
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                     ) {
-                        Text("HDMI 3", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("HDMI 3", color = colors.actionButtonText, fontWeight = FontWeight.Bold)
                     }
 
                     // Кнопка общего вызова меню входов (TV_INPUT)
@@ -1036,13 +1046,13 @@ fun HomeScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Меню входов ТВ (Source / Input)", color = Color(0xFF00E5FF))
+                        Text("Меню входов ТВ (Source / Input)", color = colors.primary)
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showSourceDialog = false }) {
-                    Text("Отмена", color = Color.Gray)
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )
@@ -1057,12 +1067,13 @@ private fun ShortcutTile(
     onClick: () -> Unit,
     onDelete: (() -> Unit)?
 ) {
+    val colors = AppTheme.colors
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF181822)),
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier
             .size(width = 88.dp, height = 72.dp)
-            .border(1.dp, Color(0xFF282838), RoundedCornerShape(14.dp))
+            .border(1.dp, colors.cardBorder, RoundedCornerShape(14.dp))
             .clickable { onClick() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1070,7 +1081,7 @@ private fun ShortcutTile(
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Удалить ярлык",
-                    tint = Color.Gray,
+                    tint = colors.textSecondary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
@@ -1094,7 +1105,7 @@ private fun ShortcutTile(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = shortcut.title,
-                    color = Color.White,
+                    color = colors.textPrimary,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

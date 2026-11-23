@@ -1,5 +1,6 @@
 package com.remote.control.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remote.control.data.device.Device
 import com.remote.control.ui.HomeViewModel
+import com.remote.control.ui.theme.AppTheme
 import com.remote.control.utils.Logger
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +34,7 @@ fun PairingScreen(
 ) {
     val state by homeViewModel.uiState.collectAsState()
     val savedDevices by homeViewModel.pairedDevices.collectAsState()
+    val colors = AppTheme.colors
 
     var manualIp by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("Xiaomi TV") }
@@ -41,24 +44,24 @@ fun PairingScreen(
     var renameText by remember { mutableStateOf("") }
 
     Scaffold(
-        containerColor = Color(0xFF0A0A0C),
+        containerColor = colors.background,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF121216)),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.topBarBackground),
                 title = {
                     Text(
                         "Выбор и подключение ТВ",
-                        color = Color.White,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                 },
                 actions = {
                     IconButton(onClick = { homeViewModel.startDiscovery() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить поиск", tint = Color(0xFF00E5FF))
+                        Icon(Icons.Default.Refresh, contentDescription = "Обновить поиск", tint = colors.primary)
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Настройки и логи", tint = Color.White)
+                        Icon(Icons.Default.Settings, contentDescription = "Настройки и логи", tint = colors.textPrimary)
                     }
                 }
             )
@@ -74,7 +77,8 @@ fun PairingScreen(
             if (state.isConnecting) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24)),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        border = BorderStroke(1.dp, colors.cardBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -83,11 +87,11 @@ fun PairingScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             CircularProgressIndicator(
-                                color = Color(0xFF00E5FF),
+                                color = colors.primary,
                                 modifier = Modifier.size(24.dp),
                                 strokeWidth = 2.dp
                             )
-                            Text(state.status, color = Color.White)
+                            Text(state.status, color = colors.textPrimary)
                         }
                     }
                 }
@@ -96,13 +100,14 @@ fun PairingScreen(
             state.pairingError?.let { errorText ->
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF331414)),
+                        colors = CardDefaults.cardColors(containerColor = colors.error.copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, colors.error.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Ошибка подключения", color = Color(0xFFFF453A), fontWeight = FontWeight.Bold)
+                            Text("Ошибка подключения", color = colors.error, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(errorText, color = Color.White, fontSize = 13.sp)
+                            Text(errorText, color = colors.textPrimary, fontSize = 13.sp)
                         }
                     }
                 }
@@ -113,7 +118,7 @@ fun PairingScreen(
                 item {
                     Text(
                         "Сохраненные ТВ (${savedDevices.size})",
-                        color = Color(0xFF00E5FF),
+                        color = colors.primary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
@@ -122,13 +127,13 @@ fun PairingScreen(
                     val isSelected = state.selectedDeviceIp == device.ip && state.isConnected
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) Color(0xFF14241C) else Color(0xFF161622)
+                            containerColor = if (isSelected) colors.success.copy(alpha = 0.1f) else colors.cardBackground
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .border(
                                 width = if (isSelected) 1.5.dp else 1.dp,
-                                color = if (isSelected) Color(0xFF34C759) else Color(0xFF282838),
+                                color = if (isSelected) colors.success else colors.cardBorder,
                                 shape = RoundedCornerShape(14.dp)
                             )
                             .clickable {
@@ -153,7 +158,7 @@ fun PairingScreen(
                                     modifier = Modifier
                                         .size(42.dp)
                                         .background(
-                                            if (isSelected) Color(0xFF34C759).copy(alpha = 0.15f) else Color(0xFF00E5FF).copy(alpha = 0.12f),
+                                            if (isSelected) colors.success.copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.12f),
                                             CircleShape
                                         ),
                                     contentAlignment = Alignment.Center
@@ -161,7 +166,7 @@ fun PairingScreen(
                                     Icon(
                                         Icons.Default.Tv,
                                         contentDescription = null,
-                                        tint = if (isSelected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                        tint = if (isSelected) colors.success else colors.primary,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
@@ -174,7 +179,7 @@ fun PairingScreen(
                                     ) {
                                         Text(
                                             text = device.name,
-                                            color = Color.White,
+                                            color = colors.textPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 16.sp,
                                             maxLines = 1,
@@ -186,7 +191,7 @@ fun PairingScreen(
 
                                         // Clickable mode toggle badge
                                         Surface(
-                                            color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
+                                            color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.15f),
                                             shape = RoundedCornerShape(6.dp),
                                             modifier = Modifier.clickable {
                                                 homeViewModel.toggleDeviceType(device.ip)
@@ -199,14 +204,14 @@ fun PairingScreen(
                                             ) {
                                                 Text(
                                                     text = if (device.isSamsung) "Samsung" else "Android TV",
-                                                    color = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                    color = if (device.isSamsung) Color(0xFF2979FF) else colors.primary,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Icon(
                                                     Icons.Default.SwapHoriz,
                                                     contentDescription = "Сменить режим",
-                                                    tint = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                    tint = if (device.isSamsung) Color(0xFF2979FF) else colors.primary,
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                             }
@@ -222,19 +227,19 @@ fun PairingScreen(
                                         Icon(
                                             Icons.Default.Wifi,
                                             contentDescription = null,
-                                            tint = Color.Gray,
+                                            tint = colors.textSecondary,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Text(
                                             text = device.ip,
-                                            color = Color(0xFFAAAAAA),
+                                            color = colors.textSecondary,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                         if (isSelected) {
                                             Text(
                                                 text = "• Подключено",
-                                                color = Color(0xFF34C759),
+                                                color = colors.success,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold
                                             )
@@ -248,7 +253,7 @@ fun PairingScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(1.dp)
-                                    .background(Color(0xFF242434))
+                                    .background(colors.divider)
                             )
 
                             // Bottom Actions Row
@@ -259,7 +264,7 @@ fun PairingScreen(
                             ) {
                                 Text(
                                     text = if (isSelected) "Активное ТВ" else "Нажмите для подключения",
-                                    color = if (isSelected) Color(0xFF34C759) else Color(0xFF7E7E92),
+                                    color = if (isSelected) colors.success else colors.textSecondary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -279,7 +284,7 @@ fun PairingScreen(
                                         Icon(
                                             Icons.Default.Edit,
                                             contentDescription = "Переименовать",
-                                            tint = Color(0xFF00E5FF),
+                                            tint = colors.primary,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -287,7 +292,7 @@ fun PairingScreen(
                                     // PIN Re-pair button (for Android TV)
                                     if (!device.isSamsung) {
                                         Surface(
-                                            color = Color(0xFFFF6D00).copy(alpha = 0.15f),
+                                            color = colors.secondary.copy(alpha = 0.15f),
                                             shape = RoundedCornerShape(6.dp),
                                             modifier = Modifier.clickable {
                                                 homeViewModel.initiatePairing(device.name, device.ip)
@@ -295,7 +300,7 @@ fun PairingScreen(
                                         ) {
                                             Text(
                                                 "PIN",
-                                                color = Color(0xFFFF6D00),
+                                                color = colors.secondary,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -311,7 +316,7 @@ fun PairingScreen(
                                         Icon(
                                             Icons.Default.Delete,
                                             contentDescription = "Удалить",
-                                            tint = Color(0xFFFF453A),
+                                            tint = colors.error,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -331,12 +336,12 @@ fun PairingScreen(
                 ) {
                     Text(
                         "Найденные ТВ в сети (${state.discoveredDevices.size})",
-                        color = Color(0xFFFF6D00),
+                        color = colors.secondary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
                     if (state.isScanning) {
-                        Text("Поиск Wi-Fi...", color = Color.Gray, fontSize = 12.sp)
+                        Text("Поиск Wi-Fi...", color = colors.textSecondary, fontSize = 12.sp)
                     }
                 }
             }
@@ -344,7 +349,8 @@ fun PairingScreen(
             if (state.discoveredDevices.isEmpty()) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C)),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                        border = BorderStroke(1.dp, colors.cardBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -353,13 +359,13 @@ fun PairingScreen(
                         ) {
                             Text(
                                 "Идет поиск Android TV / Xiaomi TV в вашей Wi-Fi сети...",
-                                color = Color.LightGray,
+                                color = colors.textSecondary,
                                 fontSize = 14.sp
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 "Убедитесь, что телефон и телевизор подключены к одному роутеру, либо введите IP телевизора вручную ниже.",
-                                color = Color.Gray,
+                                color = colors.textSecondary.copy(alpha = 0.8f),
                                 fontSize = 12.sp
                             )
                         }
@@ -369,10 +375,10 @@ fun PairingScreen(
                 items(state.discoveredDevices) { tv ->
                     val isSamsungTv = tv.port == 8001 || tv.port == 8002 || tv.name.contains("Samsung", ignoreCase = true) || tv.name.contains("Tizen", ignoreCase = true)
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF181822)),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF), RoundedCornerShape(12.dp))
+                            .border(1.dp, if (isSamsungTv) Color(0xFF2979FF) else colors.primary, RoundedCornerShape(12.dp))
                             .clickable {
                                 if (isSamsungTv) {
                                     homeViewModel.connectToSamsungTv(tv.name, tv.ip) {
@@ -402,7 +408,7 @@ fun PairingScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, tint = if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF))
+                                Icon(Icons.Default.Wifi, contentDescription = null, tint = if (isSamsungTv) Color(0xFF2979FF) else colors.primary)
                                 Column {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -410,7 +416,7 @@ fun PairingScreen(
                                     ) {
                                         Text(
                                             text = tv.name,
-                                            color = Color.White,
+                                            color = colors.textPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             maxLines = 1,
@@ -418,19 +424,19 @@ fun PairingScreen(
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                         Surface(
-                                            color = if (isSamsungTv) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
+                                            color = if (isSamsungTv) Color(0xFF007AFF).copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.15f),
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
                                                 text = if (isSamsungTv) "Samsung Tizen" else "Android TV",
-                                                color = if (isSamsungTv) Color(0xFF2979FF) else Color(0xFF00E5FF),
+                                                color = if (isSamsungTv) Color(0xFF2979FF) else colors.primary,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
-                                    Text("${tv.ip}:${tv.port}", color = Color.LightGray, fontSize = 12.sp)
+                                    Text("${tv.ip}:${tv.port}", color = colors.textSecondary, fontSize = 12.sp)
                                 }
                             }
                             Button(
@@ -450,7 +456,7 @@ fun PairingScreen(
                                         }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isSamsungTv) Color(0xFF007AFF) else Color(0xFFFF6D00))
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isSamsungTv) Color(0xFF007AFF) else colors.secondary)
                             ) {
                                 Text("Подключить", color = Color.White)
                             }
@@ -462,7 +468,8 @@ fun PairingScreen(
             // 3. Manual IP Connection
             item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF14141C)),
+                    colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                    border = BorderStroke(1.dp, colors.cardBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -471,7 +478,7 @@ fun PairingScreen(
                     ) {
                         Text(
                             "Ручное подключение по IP",
-                            color = Color.White,
+                            color = colors.textPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )
@@ -500,9 +507,9 @@ fun PairingScreen(
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6D00))
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.secondary)
                             ) {
-                                Text("Сопряжение (PIN)")
+                                Text("Сопряжение (PIN)", color = Color.White)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -513,9 +520,11 @@ fun PairingScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                border = BorderStroke(1.dp, colors.cardBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary)
                             ) {
-                                Text("Уже спарен")
+                                Text("Уже спарен", color = colors.textPrimary)
                             }
                         }
                         Button(
@@ -539,9 +548,9 @@ fun PairingScreen(
                 Button(
                     onClick = onNavigateToHome,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23232E))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                 ) {
-                    Text("Открыть пульт управления ->", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                    Text("Открыть пульт управления ->", color = colors.primary, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -551,11 +560,11 @@ fun PairingScreen(
     deviceToRename?.let { dev ->
         AlertDialog(
             onDismissRequest = { deviceToRename = null },
-            containerColor = Color(0xFF1A1A24),
-            title = { Text("Переименовать ТВ", color = Color.White, fontWeight = FontWeight.Bold) },
+            containerColor = colors.cardBackground,
+            title = { Text("Переименовать ТВ", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("IP: ${dev.ip}", color = Color.Gray, fontSize = 12.sp)
+                    Text("IP: ${dev.ip}", color = colors.textSecondary, fontSize = 12.sp)
                     OutlinedTextField(
                         value = renameText,
                         onValueChange = { renameText = it },
@@ -571,14 +580,14 @@ fun PairingScreen(
                         homeViewModel.renameDevice(dev.ip, renameText)
                         deviceToRename = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
-                    Text("Сохранить", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Сохранить", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deviceToRename = null }) {
-                    Text("Отмена", color = Color.Gray)
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )
@@ -588,11 +597,11 @@ fun PairingScreen(
     if (state.isPairingPinRequired) {
         AlertDialog(
             onDismissRequest = { homeViewModel.dismissPinDialog() },
-            containerColor = Color(0xFF1A1A24),
+            containerColor = colors.cardBackground,
             title = {
                 Text(
                     "Введите PIN-код с экрана ТВ",
-                    color = Color.White,
+                    color = colors.textPrimary,
                     fontWeight = FontWeight.Bold
                 )
             },
@@ -600,7 +609,7 @@ fun PairingScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         "На экране ${state.pendingPairingName} (${state.pendingPairingIp}) появился 6-значный код (цифры и буквы A-F):",
-                        color = Color.LightGray,
+                        color = colors.textSecondary,
                         fontSize = 13.sp
                     )
                     OutlinedTextField(
@@ -611,7 +620,7 @@ fun PairingScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     state.pairingError?.let { err ->
-                        Text(err, color = Color(0xFFFF453A), fontSize = 12.sp)
+                        Text(err, color = colors.error, fontSize = 12.sp)
                     }
                 }
             },
@@ -623,14 +632,14 @@ fun PairingScreen(
                             onNavigateToHome()
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.success)
                 ) {
                     Text("Подтвердить", color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { homeViewModel.dismissPinDialog() }) {
-                    Text("Отмена", color = Color.Gray)
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )

@@ -8,7 +8,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
+import com.remote.control.ui.theme.AppDarkColorScheme
+import com.remote.control.ui.theme.AppLightColorScheme
+import com.remote.control.ui.theme.DarkAppColors
+import com.remote.control.ui.theme.LightAppColors
+import com.remote.control.ui.theme.LocalAppColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -52,18 +59,7 @@ class MainActivity : ComponentActivity() {
         requestPermissionsOnce()
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Color(0xFF00E5FF),
-                    secondary = Color(0xFFFF6D00),
-                    background = Color(0xFF0A0A0C),
-                    surface = Color(0xFF121216)
-                )
-            ) {
-                Surface {
-                    AppNavigation()
-                }
-            }
+            AppRoot()
         }
     }
 
@@ -87,8 +83,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavigation() {
-    val navController = rememberNavController()
+fun AppRoot() {
     val context = LocalContext.current
     val repository = remember { DeviceRepository(context) }
     val pairingRepository = remember { PairingRepositoryImpl() }
@@ -109,6 +104,25 @@ fun AppNavigation() {
         )
     }
     val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
+    val isDarkTheme by homeViewModel.isDarkTheme.collectAsState()
+
+    val colorScheme = if (isDarkTheme) AppDarkColorScheme else AppLightColorScheme
+    val appColors = if (isDarkTheme) DarkAppColors else LightAppColors
+
+    CompositionLocalProvider(LocalAppColors provides appColors) {
+        MaterialTheme(colorScheme = colorScheme) {
+            Surface(
+                color = appColors.background
+            ) {
+                AppNavigation(homeViewModel = homeViewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(homeViewModel: HomeViewModel) {
+    val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = "pairing") {
         composable("pairing") {

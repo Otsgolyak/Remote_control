@@ -26,6 +26,17 @@ class DeviceRepository(private val context: Context) {
     private val DEVICES_KEY = stringPreferencesKey("paired_devices")
     private val SELECTED_IP_KEY = stringPreferencesKey("selected_device_ip")
     private val SHORTCUTS_KEY = stringPreferencesKey("custom_shortcuts")
+    private val DARK_THEME_KEY = androidx.datastore.preferences.core.booleanPreferencesKey("is_dark_theme")
+
+    val isDarkTheme: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[DARK_THEME_KEY] ?: false // По умолчанию светлая тема (false)
+    }
+
+    suspend fun setDarkTheme(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[DARK_THEME_KEY] = enabled
+        }
+    }
 
     val pairedDevices: Flow<List<Device>> = context.dataStore.data.map { preferences ->
         val json = preferences[DEVICES_KEY] ?: "[]"

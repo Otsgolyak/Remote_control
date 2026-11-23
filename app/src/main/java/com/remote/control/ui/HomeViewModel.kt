@@ -95,6 +95,18 @@ class HomeViewModel(
         initialValue = emptyList()
     )
 
+    val isDarkTheme: StateFlow<Boolean> = repository.isDarkTheme.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false // По умолчанию светлая тема
+    )
+
+    fun setDarkTheme(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setDarkTheme(enabled)
+        }
+    }
+
     init {
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
