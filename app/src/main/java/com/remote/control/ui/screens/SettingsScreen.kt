@@ -12,6 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
+import com.remote.control.data.report.BugReportResult
+import com.remote.control.data.report.BugReportSender
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -44,6 +47,7 @@ fun SettingsScreen(
     val logsText by Logger.logsFlow.collectAsState()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     val downloadProgress by updateRepository.downloadProgress.collectAsState()
+    var isSendingBugReport by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = Color(0xFF0A0A0C),
@@ -200,30 +204,81 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
+                    enabled = !isSendingBugReport,
                     onClick = {
-                        Logger.sendLogsByEmail(context)
+                        isSendingBugReport = true
+                        Toast.makeText(context, "Отправка логов на GitHub...", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val result = BugReportSender.sendReport()
+                            isSendingBugReport = false
+                            when (result) {
+                                is BugReportResult.Success -> {
+                                    Toast.makeText(context, "✅ Репорт #${result.issueNumber} успешно отправлен разработчику!", Toast.LENGTH_LONG).show()
+                                }
+                                is BugReportResult.Error -> {
+                                    Toast.makeText(context, "❌ Не удалось отправить: ${result.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     },
-                    modifier = Modifier.weight(1.3f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF).copy(alpha = 0.18f)),
+                    modifier = Modifier.weight(1.5f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500).copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                    border = BorderStroke(1.dp, Color(0xFFFF9500).copy(alpha = 0.6f)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        if (isSendingBugReport) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color(0xFFFF9500),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.BugReport,
+                                contentDescription = null,
+                                tint = Color(0xFFFF9500),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Text(
+                            if (isSendingBugReport) "Отправка..." else "Создать репорт",
+                            color = Color(0xFFFF9500),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        Logger.sendLogsByEmail(context)
+                    },
+                    modifier = Modifier.weight(1.1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF).copy(alpha = 0.18f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Icon(
                             Icons.Default.Email,
                             contentDescription = null,
                             tint = Color(0xFF00E5FF),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            "На почту",
+                            "Почта",
                             color = Color(0xFF00E5FF),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         )
                     }
                 }
@@ -234,11 +289,11 @@ fun SettingsScreen(
                         cm.setPrimaryClip(ClipData.newPlainText("RemoteLogs", logsText))
                         Toast.makeText(context, "Логи скопированы", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(0.9f),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                     border = BorderStroke(1.dp, Color(0xFF2C2C3A)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -248,19 +303,19 @@ fun SettingsScreen(
                             Icons.Default.ContentCopy,
                             contentDescription = null,
                             tint = Color.LightGray,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Text("Копия", fontSize = 12.sp)
+                        Text("Копия", fontSize = 11.sp)
                     }
                 }
 
                 OutlinedButton(
                     onClick = { Logger.clearLogs() },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(0.9f),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF453A)),
                     border = BorderStroke(1.dp, Color(0xFF3A2024)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -270,9 +325,9 @@ fun SettingsScreen(
                             Icons.Default.DeleteOutline,
                             contentDescription = null,
                             tint = Color(0xFFFF453A),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Text("Сброс", fontSize = 12.sp)
+                        Text("Сброс", fontSize = 11.sp)
                     }
                 }
             }

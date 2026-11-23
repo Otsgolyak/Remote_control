@@ -28,6 +28,11 @@ android {
         versionCode = major * 10000 + minor * 100 + patch
         versionName = "$major.$minor.$patch"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val ghBugReportToken: String = (project.findProperty("ghBugReportToken") as? String)
+            ?: System.getenv("GH_BUG_REPORT_TOKEN")
+            ?: ""
+        buildConfigField("String", "BUG_REPORT_TOKEN", "\"$ghBugReportToken\"")
     }
 
     signingConfigs {

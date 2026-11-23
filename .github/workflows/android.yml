@@ -36,8 +36,10 @@ jobs:
         echo "Building Remote_control v$VERSION"
 
     - name: Build Debug APK
+      env:
+        GH_BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
       run: |
-        gradle :app:assembleDebug
+        gradle :app:assembleDebug -PghBugReportToken="${GH_BUG_REPORT_TOKEN:-}"
         cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Remote_control-v${{ steps.version.outputs.version }}.apk
 
     - name: Upload APK Artifact
