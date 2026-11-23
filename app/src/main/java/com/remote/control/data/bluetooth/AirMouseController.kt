@@ -274,7 +274,6 @@ class AirMouseController(context: Context) : SensorEventListener {
             Logger.log("BT HID: registerHidApp() пропущено — приложение уже зарегистрировано")
             return
         }
-        // Указываем понятное имя устройства в дескрипторе Bluetooth SDP
         val deviceModel = Build.MODEL ?: "Phone"
         val appName = "$deviceModel (Air Mouse)"
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
@@ -284,14 +283,32 @@ class AirMouseController(context: Context) : SensorEventListener {
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             MOUSE_REPORT_DESCRIPTOR
         )
-        // Если в системном стеке Bluetooth осталась зависшая сессия, сбрасываем ее
         try {
             hid.unregisterApp()
-        } catch (e: Exception) {
-            // ignore
+        } catch (_: Exception) {}
+
+        // Даем небольшую паузу системному стеку Bluetooth для завершения предыдущей регистрации
+        controllerScope.launch {
+            delay(150L)
+            var regResult = false
+            try {
+                regResult = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
+            } catch (e: Exception) {
+                Logger.log("BT HID: registerApp исключение: ${e.message}")
+            }
+            Logger.log("BT HID: registerApp вызван для \"$appName\" -> result=$regResult")
+
+            // Если не удалось зарегистрироваться с ходу (специфика HyperOS / Android 14-16) — повторяем через 500мс
+            if (!regResult && !isAppRegistered) {
+                delay(500L)
+                try {
+                    val retry = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
+                    Logger.log("BT HID: registerApp повторная попытка -> result=$retry")
+                } catch (e2: Exception) {
+                    Logger.log("BT HID: registerApp retry исключение: ${e2.message}")
+                }
+            }
         }
-        val regResult = hid.registerApp(sdpSettings, null, null, hidExecutor, hidCallback)
-        Logger.log("BT HID: registerApp вызван для \"$appName\" -> result=$regResult")
     }
 
     fun connectToDevice(device: BluetoothDevice) {
@@ -391,11 +408,14 @@ class AirMouseController(context: Context) : SensorEventListener {
 
         val lower = clean.lowercase()
 
-        // Жестко отсекаем аудио, часы и фитнес-трекеры
+        // Жестко отсекаем смартфоны, аудио, часы, фитнес-трекеры и BLE-маяки
         if (lower.contains("watch") || lower.contains("band") || lower.contains("buds") ||
             lower.contains("headset") || lower.contains("earphone") || lower.contains("audio") ||
             lower.contains("speaker") || lower.contains("charge") || lower.contains("major") ||
-            lower.contains("gtrs") || lower.contains("erazer") ||
+            lower.contains("gtrs") || lower.contains("erazer") || lower.contains("phone") ||
+            lower.contains("ultra") || lower.contains("galaxy") || lower.contains("s23") ||
+            lower.contains("s24") || lower.contains("s22") || lower.contains("iphone") ||
+            lower.contains("tank") || lower.contains("mini") || lower.contains("g9s") ||
             (lower.contains("ble") && !lower.contains("tv"))
         ) {
             return false
@@ -420,6 +440,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             lower.contains("google tv") ||
             lower.contains("smart tv") ||
             lower.contains("atv") ||
+            clean.equals("TV", ignoreCase = true) ||
             Regex("""\b(tv|appletv|firetv)\b""", RegexOption.IGNORE_CASE).containsMatchIn(clean)
     }
 
@@ -458,16 +479,12 @@ class AirMouseController(context: Context) : SensorEventListener {
             delay(4000L) // Даем 4 секунды для сбора пакетов RSSI
 
             // Сортируем: ТВ-кандидаты первыми, внутри по убыванию мощности RSSI (сильнейший = ближайший ТВ)
+            // Исключаем очень слабые сигналы (< -80 dBm, это соседи или помехи)
             val candidates = discoveredDevicesMap.values
-                .filter { (dev, _) ->
-                    val n = dev.name?.lowercase() ?: ""
-                    !n.contains("watch") && !n.contains("buds") && !n.contains("audio") &&
-                        !n.contains("speaker") && !n.contains("ble")
+                .filter { (dev, rssi) ->
+                    rssi >= -80 && isLikelyTv(dev, targetTvName)
                 }
-                .sortedWith(
-                    compareByDescending<Pair<BluetoothDevice, Int>> { isLikelyTv(it.first, targetTvName) }
-                        .thenByDescending { it.second }
-                )
+                .sortedByDescending { it.second }
                 .map { it.first }
 
             if (candidates.isEmpty()) {
