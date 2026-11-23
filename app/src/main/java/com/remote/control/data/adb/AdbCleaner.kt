@@ -159,17 +159,15 @@ object AdbCleaner {
 
                 // 6. Запуск Media Station X с передачей стартового параметра msx.cc.ua
                 Logger.log("AdbCleaner: запуск MSX с параметром $MSX_START_PARAMETER...")
-                // MSX поддерживает открытие конфигураций и запуск через Intent
-                val launchWithParam = dadb.shell("am start -a android.intent.action.VIEW -d \"http://$MSX_START_PARAMETER\" -n $MSX_PACKAGE/de.benzac.msx.MainActivity")
-                if (launchWithParam.exitCode == 0) {
-                    details.add("🚀 MSX запущен со стартовым параметром: $MSX_START_PARAMETER")
-                    Logger.log("AdbCleaner: MSX успешно запущен с http://$MSX_START_PARAMETER")
-                } else {
-                    // Fallback на стандартный запуск активности
-                    val fallbackLaunch = dadb.shell("monkey -p $MSX_PACKAGE -c android.intent.category.LAUNCHER 1")
-                    details.add("🚀 MSX запущен на ТВ (введите '$MSX_START_PARAMETER' в Настройки -> Start Parameter)")
-                    Logger.log("AdbCleaner: запуск MSX fallback -> ${fallbackLaunch.output.trim()}")
+                val deepLinkCmd = "am start -a android.intent.action.VIEW -d \"msx://de.benzac.msx?start=$MSX_START_PARAMETER\""
+                val explicitCmd = "am start -a android.intent.action.VIEW -d \"http://$MSX_START_PARAMETER\" -n $MSX_PACKAGE/de.benzac.msx.MainActivity"
+                val launchResult = dadb.shell(deepLinkCmd)
+                if (launchResult.exitCode != 0) {
+                    dadb.shell(explicitCmd)
                 }
+                dadb.shell("monkey -p $MSX_PACKAGE -c android.intent.category.LAUNCHER 1")
+                details.add("🚀 Media Station X запущен с параметром: $MSX_START_PARAMETER")
+                Logger.log("AdbCleaner: запуск MSX отправлен")
 
                 val summary = "Очистка завершена! AdGuard DNS активен, удалено служб: $disabledCount, MSX готов."
                 Logger.log("AdbCleaner результат: $summary")
