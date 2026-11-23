@@ -19,6 +19,10 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.CleaningServices
+import com.remote.control.data.adb.AdbCleanResult
+import com.remote.control.data.adb.AdbCleaner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +52,8 @@ fun SettingsScreen(
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     val downloadProgress by updateRepository.downloadProgress.collectAsState()
     var isSendingBugReport by remember { mutableStateOf(false) }
+    var isCleaningTv by remember { mutableStateOf(false) }
+    var cleanResultDialog by remember { mutableStateOf<AdbCleanResult?>(null) }
 
     Scaffold(
         containerColor = Color(0xFF0A0A0C),
@@ -94,6 +100,136 @@ fun SettingsScreen(
                         onValueChange = { homeViewModel.setSensitivity(it) },
                         valueRange = 0.5f..3.5f
                     )
+                }
+            }
+
+            // TV Ad & Bloatware Cleaner Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.25f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Security,
+                                contentDescription = null,
+                                tint = Color(0xFF34C759),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                "Очистка ТВ от рекламы и слежения",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    Text(
+                        "Включает AdGuard DNS, блокирует телеметрию Xiaomi/Google, отключает рекламу PatchWall и чистит кэш.",
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    val deviceIp = state.selectedDeviceIp
+                    val isConnected = state.isConnected && !state.isSamsungMode && deviceIp != null
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            enabled = isConnected && !isCleaningTv,
+                            onClick = {
+                                if (deviceIp != null) {
+                                    isCleaningTv = true
+                                    Toast.makeText(context, "Подключение к ТВ по ADB и очистка...", Toast.LENGTH_SHORT).show()
+                                    scope.launch {
+                                        val res = AdbCleaner.cleanTv(context, deviceIp)
+                                        isCleaningTv = false
+                                        cleanResultDialog = res
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1.3f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (isCleaningTv) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color.Black,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.CleaningServices,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    if (isCleaningTv) "Очистка..." else "Очистить ТВ",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            enabled = isConnected && !isCleaningTv,
+                            onClick = {
+                                if (deviceIp != null) {
+                                    isCleaningTv = true
+                                    Toast.makeText(context, "Восстановление настроек ТВ...", Toast.LENGTH_SHORT).show()
+                                    scope.launch {
+                                        val res = AdbCleaner.restoreTv(context, deviceIp)
+                                        isCleaningTv = false
+                                        cleanResultDialog = res
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(0.9f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray),
+                            border = BorderStroke(1.dp, Color(0xFF2C2C3A))
+                        ) {
+                            Text(
+                                "Сброс",
+                                color = Color.LightGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    if (!isConnected) {
+                        Text(
+                            if (state.isSamsungMode) "Очистка по ADB доступна только для Android TV"
+                            else "Подключитесь к Android TV для выполнения очистки",
+                            color = Color(0xFFFF9500),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
 
@@ -355,5 +491,39 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    cleanResultDialog?.let { result ->
+        AlertDialog(
+            onDismissRequest = { cleanResultDialog = null },
+            containerColor = Color(0xFF161622),
+            title = {
+                Text(
+                    if (result.success) "Очистка завершена" else "Результат операции",
+                    color = if (result.success) Color(0xFF34C759) else Color(0xFFFF453A),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(result.summary, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Divider(color = Color(0xFF2C2C3A), modifier = Modifier.padding(vertical = 4.dp))
+                    result.details.forEach { detail ->
+                        Text(detail, color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { cleanResultDialog = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                ) {
+                    Text("OK", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }
