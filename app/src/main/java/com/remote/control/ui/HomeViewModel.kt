@@ -66,6 +66,7 @@ data class RemoteState(
     val isBtScanning: Boolean = false,
     val discoveredBtDevices: List<com.remote.control.data.bluetooth.DiscoveredBluetoothDevice> = emptyList(),
     val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор на ТВ",
+    val btPairingPromptDevice: String? = null,
     val apps: List<AppShortcut> = defaultShortcuts,
     val mouseSensitivity: Float = 1.5f,
     val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
@@ -185,6 +186,12 @@ class HomeViewModel(
         viewModelScope.launch {
             airMouseController.discoveredBtDevices.collect { list ->
                 _uiState.value = _uiState.value.copy(discoveredBtDevices = list)
+            }
+        }
+
+        viewModelScope.launch {
+            airMouseController.btPairingPromptDevice.collect { deviceName ->
+                _uiState.value = _uiState.value.copy(btPairingPromptDevice = deviceName)
             }
         }
 
@@ -649,6 +656,10 @@ class HomeViewModel(
     fun makeBluetoothDiscoverable(context: android.content.Context) {
         airMouseController.initBluetoothHid()
         airMouseController.makeDiscoverable(context)
+    }
+
+    fun dismissBtPairingPrompt() {
+        airMouseController.dismissPairingPrompt()
     }
 
     fun setGyroEnabled(enabled: Boolean) {

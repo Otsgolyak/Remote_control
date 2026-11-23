@@ -1057,6 +1057,49 @@ fun HomeScreen(
             }
         )
     }
+
+    // Диалог сопряжения Bluetooth для мыши/курсора
+    state.btPairingPromptDevice?.let { devName ->
+        AlertDialog(
+            onDismissRequest = { homeViewModel.dismissBtPairingPrompt() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = colors.primary)
+                    Text("Сопряжение Bluetooth с ТВ", color = colors.textPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Телевизор \"$devName\" требует сопряжения для работы курсора мыши.",
+                        color = colors.textPrimary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        "1. Подтвердите запрос на экране ТВ (или на телефоне).\n2. Либо на ТВ откройте «Настройки» ➔ «Пульты и аксессуары» ➔ «Добавить устройство» и нажмите кнопку ниже, чтобы ТВ увидел телефон.",
+                        color = colors.textSecondary,
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        homeViewModel.makeBluetoothDiscoverable(context)
+                        homeViewModel.dismissBtPairingPrompt()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) {
+                    Text("Сделать телефон видимым", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { homeViewModel.dismissBtPairingPrompt() }) {
+                    Text("Понятно", color = colors.textSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable

@@ -123,8 +123,14 @@ class AirMouseController(context: Context) : SensorEventListener {
     private val _discoveredBtDevices = MutableStateFlow<List<DiscoveredBluetoothDevice>>(emptyList())
     val discoveredBtDevices: StateFlow<List<DiscoveredBluetoothDevice>> = _discoveredBtDevices.asStateFlow()
 
+    private val _btPairingPromptDevice = MutableStateFlow<String?>(null)
+    val btPairingPromptDevice: StateFlow<String?> = _btPairingPromptDevice.asStateFlow()
+
+    @Volatile
+    private var pendingBondDevice: BluetoothDevice? = null
+
     private val controllerScope = CoroutineScope(Dispatchers.Main + Job())
-    private var scanTimeoutJob: Job? = null
+    private var scanTimeoutJob = null as Job?
     private var isReceiverRegistered = false
 
     private val discoveryReceiver = object : BroadcastReceiver() {
@@ -149,6 +155,38 @@ class AirMouseController(context: Context) : SensorEventListener {
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                     _isBtScanning.value = false
                     Logger.log("BT Сканер: сканирование эфира завершено, всего найдено ${discoveredDevicesMap.size} устройств")
+                }
+                BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    } ?: return
+
+                    val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                    val prevBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)
+                    val devName = device.name ?: device.address ?: "ТВ"
+                    Logger.log("BT Сопряжение: статус сменился для \"$devName\" [$prevBondState -> $bondState]")
+
+                    when (bondState) {
+                        BluetoothDevice.BOND_BONDED -> {
+                            Logger.log("BT Сопряжение: успешно выполнено с \"$devName\"! Немедленное подключение HID...")
+                            _btPairingPromptDevice.value = null
+                            _btStatus.value = "Сопряжение успешно! Подключение HID..."
+                            connectToDevice(device)
+                        }
+                        BluetoothDevice.BOND_BONDING -> {
+                            _btStatus.value = "Выполняется сопряжение с $devName..."
+                            Logger.log("BT Сопряжение: в процессе подтверждения на ТВ/телефоне для \"$devName\"")
+                        }
+                        BluetoothDevice.BOND_NONE -> {
+                            if (prevBondState == BluetoothDevice.BOND_BONDING) {
+                                Logger.log("BT Сопряжение: сопряжение отменено или отклонено для \"$devName\"")
+                                _btStatus.value = "Сопряжение отменено"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -261,11 +299,26 @@ class AirMouseController(context: Context) : SensorEventListener {
             Logger.log("BT HID: initBluetoothHid() — адаптер недоступен или выключен (adapter=${adapter != null}, enabled=${adapter?.isEnabled})")
             return
         }
+
+        registerReceiverIfNeeded()
+
         val bondedList = adapter.bondedDevices?.joinToString { "${it.name}[${it.address}]" } ?: "none"
         Logger.log("BT HID: initBluetoothHid() — адаптер включен (state=${adapter.state}), bondedDevices=[$bondedList]")
         _btStatus.value = "Запуск Bluetooth HID..."
         val proxyOk = adapter.getProfileProxy(appContext, profileListener, BluetoothProfile.HID_DEVICE)
         Logger.log("BT HID: getProfileProxy(HID_DEVICE) -> result=$proxyOk")
+    }
+
+    private fun registerReceiverIfNeeded() {
+        if (!isReceiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_FOUND)
+                addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+                addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+            }
+            appContext.registerReceiver(discoveryReceiver, filter)
+            isReceiverRegistered = true
+        }
     }
 
     private fun registerHidApp() {
@@ -352,6 +405,10 @@ class AirMouseController(context: Context) : SensorEventListener {
         return bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
     }
 
+    fun dismissPairingPrompt() {
+        _btPairingPromptDevice.value = null
+    }
+
     /**
      * Запускает тихое сканирование Bluetooth-эфира с измерением RSSI.
      */
@@ -363,15 +420,7 @@ class AirMouseController(context: Context) : SensorEventListener {
         }
 
         initBluetoothHid()
-
-        if (!isReceiverRegistered) {
-            val filter = IntentFilter().apply {
-                addAction(BluetoothDevice.ACTION_FOUND)
-                addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-            }
-            appContext.registerReceiver(discoveryReceiver, filter)
-            isReceiverRegistered = true
-        }
+        registerReceiverIfNeeded()
 
         discoveredDevicesMap.clear()
         _discoveredDevices.value = emptyList()
@@ -496,30 +545,52 @@ class AirMouseController(context: Context) : SensorEventListener {
             for (device in candidates) {
                 val devName = device.name ?: "TV"
                 val devRssi = discoveredDevicesMap[device.address]?.second ?: 0
-                Logger.log("BT Автоподключение: тихое рукопожатие с \"$devName\" [${device.address}], сигнал=$devRssi dBm")
+                Logger.log("BT Автоподключение: кандидат \"$devName\" [${device.address}], сигнал=$devRssi dBm, bondState=${device.bondState}")
                 _btStatus.value = "Подключение к $devName ($devRssi dBm)..."
                 onCandidateTried?.invoke(devName)
 
-                // Инициируем системное сопряжение, если устройство еще не спарено
+                // Если устройство еще не сопряжено (BOND_NONE / BOND_BONDING):
+                // Запускаем createBond() и показываем пользователю уведомление с инструкцией
                 if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                    Logger.log("BT Автоподключение: устройство \"$devName\" не спарено. Запуск createBond() и показ запроса сопряжения...")
+                    _btPairingPromptDevice.value = devName
+                    _btStatus.value = "Требуется сопряжение с $devName"
+                    pendingBondDevice = device
                     try {
-                        device.createBond()
+                        val bondStarted = device.createBond()
+                        Logger.log("BT createBond() вызван для \"$devName\" -> $bondStarted")
                     } catch (e: Exception) {
                         Logger.log("BT createBond ошибка: ${e.message}")
                     }
-                    delay(1200L)
+
+                    // Ждем пока устройство перейдет в BOND_BONDED (обработается в BroadcastReceiver)
+                    // или пока пользователь подтвердит запрос
+                    for (step in 1..20) { // до 10 секунд ожидания сопряжения
+                        delay(500L)
+                        if (device.bondState == BluetoothDevice.BOND_BONDED || _isBtConnected.value) {
+                            break
+                        }
+                    }
+
+                    if (device.bondState != BluetoothDevice.BOND_BONDED && !_isBtConnected.value) {
+                        Logger.log("BT Автоподключение: сопряжение с \"$devName\" не завершено вовремя, пробуем подключиться или переходим дальше")
+                    }
                 }
 
-                connectToDevice(device)
+                // Подключаем только если устройство спарено (или пытаемся)
+                if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                    connectToDevice(device)
 
-                // Ожидаем установления соединения
-                for (step in 1..7) {
-                    delay(500L)
-                    if (_isBtConnected.value) break
+                    // Ожидаем установления соединения
+                    for (step in 1..7) {
+                        delay(500L)
+                        if (_isBtConnected.value) break
+                    }
                 }
 
                 if (_isBtConnected.value) {
                     Logger.log("BT Автоподключение: успешно подключено к \"$devName\"!")
+                    _btPairingPromptDevice.value = null
                     _btStatus.value = "Курсор подключен к $devName"
                     break
                 }
