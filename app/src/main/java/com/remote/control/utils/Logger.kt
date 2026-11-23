@@ -1,10 +1,13 @@
 package com.remote.control.utils
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.remote.control.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,38 +76,54 @@ object Logger {
     }
 
     fun sendLogsByEmail(context: Context, subjectPrefix: String = "Xiaomi TV Remote Logs") {
+        log("sendLogsByEmail: подготовка отправки отчета на otsgolyak@gmail.com")
         try {
             val file = getLogFile()
-            if (file != null && !file.exists()) {
-                log("Создание файла логов перед отправкой")
-            }
-            val logContent = file?.takeIf { it.exists() }?.readText()?.ifBlank { "Логи пусты" }
+            val logContent = file?.takeIf { it.exists() }?.readText()?.ifBlank { _logsFlow.value.ifBlank { "Логи пусты" } }
                 ?: _logsFlow.value.ifBlank { "Логи пусты" }
 
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "message/rfc822"
-                putExtra(Intent.EXTRA_EMAIL, arrayOf("otsgolyak@gmail.com"))
-                putExtra(Intent.EXTRA_SUBJECT, "$subjectPrefix (v${BuildConfig.VERSION_NAME})")
-                putExtra(Intent.EXTRA_TEXT, "Автоматический отчет логов:\n\n$logContent")
+            val subject = "$subjectPrefix (v${BuildConfig.VERSION_NAME})"
+
+            val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:otsgolyak@gmail.com")
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, "Отчет логов приложения Xiaomi TV Remote (v${BuildConfig.VERSION_NAME}):\n\n$logContent")
                 if (file != null && file.exists()) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try {
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (fe: Exception) {
+                        log("FileProvider getUriForFile предупреждение: ${fe.message}")
+                    }
                 }
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(Intent.createChooser(intent, "Отправить логи на otsgolyak@gmail.com").apply {
+
+            val chooser = Intent.createChooser(emailIntent, "Отправить логи на otsgolyak@gmail.com").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
+            }
+
+            Toast.makeText(context, "Открытие почтового приложения...", Toast.LENGTH_SHORT).show()
+            context.startActivity(chooser)
+            log("sendLogsByEmail: диалог отправки почты запущен")
         } catch (e: Exception) {
-            // Fallback to mailto: if rfc822 chooser fails
+            log("sendLogsByEmail ошибка primary: ${e.message}, пробуем fallback mailto...")
             try {
                 val body = Uri.encode(_logsFlow.value.takeLast(4000))
                 val mailto = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:otsgolyak@gmail.com?subject=Remote%20Logs&body=$body")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(mailto)
-            } catch (_: Exception) {}
+                log("sendLogsByEmail: Fallback mailto успешно запущен")
+            } catch (e2: Exception) {
+                log("sendLogsByEmail: не удалось открыть почтовый клиент: ${e2.message}")
+                try {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    cm?.setPrimaryClip(ClipData.newPlainText("RemoteLogs", _logsFlow.value))
+                    Toast.makeText(context, "Почтовый клиент не найден. Логи скопированы в буфер обмена.", Toast.LENGTH_LONG).show()
+                } catch (_: Exception) {}
+            }
         }
     }
 }

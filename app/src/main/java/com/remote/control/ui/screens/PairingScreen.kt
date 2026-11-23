@@ -1,10 +1,12 @@
 package com.remote.control.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,10 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.remote.control.data.device.Device
 import com.remote.control.ui.HomeViewModel
+import com.remote.control.utils.Logger
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,14 +122,14 @@ fun PairingScreen(
                     val isSelected = state.selectedDeviceIp == device.ip && state.isConnected
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) Color(0xFF182B24) else Color(0xFF16161E)
+                            containerColor = if (isSelected) Color(0xFF14241C) else Color(0xFF161622)
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .border(
-                                width = 1.dp,
-                                color = if (isSelected) Color(0xFF34C759) else Color(0xFF2C2C3A),
-                                shape = RoundedCornerShape(12.dp)
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) Color(0xFF34C759) else Color(0xFF282838),
+                                shape = RoundedCornerShape(14.dp)
                             )
                             .clickable {
                                 homeViewModel.connectToSavedDevice(device) {
@@ -133,32 +137,57 @@ fun PairingScreen(
                                 }
                             }
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            // Top Row: Icon + Name + Badge
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Tv,
-                                    contentDescription = null,
-                                    tint = if (isSelected) Color(0xFF34C759) else Color(0xFF00E5FF)
-                                )
-                                Column {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(
+                                            if (isSelected) Color(0xFF34C759).copy(alpha = 0.15f) else Color(0xFF00E5FF).copy(alpha = 0.12f),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color(0xFF34C759) else Color(0xFF00E5FF),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(device.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = device.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Clickable mode toggle badge
                                         Surface(
                                             color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = RoundedCornerShape(6.dp),
                                             modifier = Modifier.clickable {
                                                 homeViewModel.toggleDeviceType(device.ip)
                                             }
@@ -166,10 +195,10 @@ fun PairingScreen(
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             ) {
                                                 Text(
-                                                    text = if (device.isSamsung) "Samsung Tizen" else "Android TV",
+                                                    text = if (device.isSamsung) "Samsung" else "Android TV",
                                                     color = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
@@ -178,45 +207,114 @@ fun PairingScreen(
                                                     Icons.Default.SwapHoriz,
                                                     contentDescription = "Сменить режим",
                                                     tint = if (device.isSamsung) Color(0xFF2979FF) else Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(12.dp)
+                                                    modifier = Modifier.size(14.dp)
                                                 )
                                             }
                                         }
                                     }
-                                    Text("IP: ${device.ip}", color = Color.Gray, fontSize = 12.sp)
+
+                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Wifi,
+                                            contentDescription = null,
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = device.ip,
+                                            color = Color(0xFFAAAAAA),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        if (isSelected) {
+                                            Text(
+                                                text = "• Подключено",
+                                                color = Color(0xFF34C759),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = {
-                                        homeViewModel.toggleDeviceType(device.ip)
+
+                            // Divider
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFF242434))
+                            )
+
+                            // Bottom Actions Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isSelected) "Активное ТВ" else "Нажмите для подключения",
+                                    color = if (isSelected) Color(0xFF34C759) else Color(0xFF7E7E92),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Rename button
+                                    IconButton(
+                                        onClick = {
+                                            renameText = device.name
+                                            deviceToRename = device
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "Переименовать",
+                                            tint = Color(0xFF00E5FF),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                ) {
-                                    Icon(
-                                        Icons.Default.SyncAlt,
-                                        contentDescription = "Переключить тип",
-                                        tint = if (device.isSamsung) Color(0xFF007AFF) else Color(0xFF00E5FF)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        renameText = device.name
-                                        deviceToRename = device
+
+                                    // PIN Re-pair button (for Android TV)
+                                    if (!device.isSamsung) {
+                                        Surface(
+                                            color = Color(0xFFFF6D00).copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp),
+                                            modifier = Modifier.clickable {
+                                                homeViewModel.initiatePairing(device.name, device.ip)
+                                            }
+                                        ) {
+                                            Text(
+                                                "PIN",
+                                                color = Color(0xFFFF6D00),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
                                     }
-                                ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Переименовать", tint = Color(0xFF00E5FF))
-                                }
-                                TextButton(
-                                    onClick = {
-                                        homeViewModel.initiatePairing(device.name, device.ip)
+
+                                    // Delete button
+                                    IconButton(
+                                        onClick = { homeViewModel.removeSavedDevice(device.ip) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Удалить",
+                                            tint = Color(0xFFFF453A),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                ) {
-                                    Text("PIN", color = Color(0xFFFF6D00))
-                                }
-                                IconButton(
-                                    onClick = { homeViewModel.removeSavedDevice(device.ip) }
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = Color(0xFFFF453A))
                                 }
                             }
                         }
@@ -310,7 +408,15 @@ fun PairingScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(tv.name, color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = tv.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
                                         Surface(
                                             color = if (isSamsungTv) Color(0xFF007AFF).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f),
                                             shape = RoundedCornerShape(4.dp)
