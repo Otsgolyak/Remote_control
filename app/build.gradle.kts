@@ -9,13 +9,22 @@ android {
     namespace = "com.remote.control"
     compileSdk = 34
 
+    val versionPropsFile = rootProject.file("version.properties")
+    val versionProps = java.util.Properties().apply {
+        if (versionPropsFile.exists()) {
+            versionPropsFile.inputStream().use { load(it) }
+        }
+    }
+    val major = versionProps.getProperty("major", "1").toInt()
+    val minor = versionProps.getProperty("minor", "0").toInt()
+    val patch = versionProps.getProperty("patch", "0").toInt()
+
     defaultConfig {
         applicationId = "com.remote.control"
         minSdk = 28
         targetSdk = 34
-        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionCode = 100 + runNumber
-        versionName = "1.0.$runNumber"
+        versionCode = major * 10000 + minor * 100 + patch
+        versionName = "$major.$minor.$patch"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

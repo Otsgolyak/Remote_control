@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Email
@@ -42,7 +43,7 @@ fun SettingsScreen(
     val state by homeViewModel.uiState.collectAsState()
     val logsText by Logger.logsFlow.collectAsState()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
-    var isUpdating by remember { mutableStateOf(false) }
+    val downloadProgress by updateRepository.downloadProgress.collectAsState()
 
     Scaffold(
         containerColor = Color(0xFF0A0A0C),
@@ -92,32 +93,105 @@ fun SettingsScreen(
                 }
             }
 
-            Button(
-                enabled = !isUpdating,
-                onClick = {
-                    if (updateRepository.canInstall()) {
-                        isUpdating = true
-                        Toast.makeText(context, "Скачивание новой версии с GitHub...", Toast.LENGTH_SHORT).show()
-                        scope.launch {
-                            val ok = updateRepository.checkForUpdates()
-                            isUpdating = false
-                            if (!ok) {
-                                Toast.makeText(context, "Ошибка скачивания обновления", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } else {
-                        Toast.makeText(context, "Разрешите установку в настройках", Toast.LENGTH_LONG).show()
-                        updateRepository.requestInstallPermission(context as android.app.Activity)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    if (isUpdating) "Скачивание APK..." else "Скачать и установить обновление с GitHub",
-                    color = Color.Black,
-                    fontWeight = FontWeight.Bold
-                )
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Версия приложения",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Surface(
+                            color = Color(0xFF00E5FF).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                "v${BuildConfig.VERSION_NAME}",
+                                color = Color(0xFF00E5FF),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    if (downloadProgress.isDownloading) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress.percent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp),
+                            color = Color(0xFF00E5FF),
+                            trackColor = Color(0xFF242436)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "${downloadProgress.percent}%",
+                                color = Color(0xFF00E5FF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${downloadProgress.downloadedMb} / ${downloadProgress.totalMb} МБ",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    Button(
+                        enabled = !downloadProgress.isDownloading,
+                        onClick = {
+                            if (updateRepository.canInstall()) {
+                                Toast.makeText(context, "Проверка и загрузка с GitHub...", Toast.LENGTH_SHORT).show()
+                                scope.launch {
+                                    val ok = updateRepository.checkForUpdates()
+                                    if (!ok) {
+                                        Toast.makeText(context, "У вас уже последняя версия или ошибка сети", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } else {
+                                Toast.makeText(context, "Разрешите установку из неизвестных источников", Toast.LENGTH_LONG).show()
+                                updateRepository.requestInstallPermission(context)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                if (downloadProgress.isDownloading) "Загрузка обновления..." else "Проверить и обновить с GitHub",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
 
             Row(

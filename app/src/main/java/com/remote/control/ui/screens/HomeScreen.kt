@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.remote.control.BuildConfig
 import com.remote.control.data.bluetooth.DiscoveredBluetoothDevice
 import com.remote.control.data.update.UpdateRepositoryImpl
 import com.remote.control.ui.AppShortcut
@@ -73,6 +74,19 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
+    val downloadProgress by updateRepository.downloadProgress.collectAsState()
+    var availableUpdateVersion by remember { mutableStateOf<String?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            val newVer = updateRepository.checkForNewVersion()
+            if (newVer != null) {
+                availableUpdateVersion = newVer
+                showUpdateDialog = true
+            }
+        }
+    }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -244,32 +258,6 @@ fun HomeScreen(
                 actions = {
                     IconButton(onClick = onNavigateToPairing) {
                         Icon(Icons.Default.Tv, contentDescription = "Список ТВ", tint = Color(0xFF00E5FF))
-                    }
-                    IconButton(
-                        enabled = !isUpdating,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (updateRepository.canInstall()) {
-                                isUpdating = true
-                                Toast.makeText(context, "Скачивание обновления APK...", Toast.LENGTH_SHORT).show()
-                                scope.launch {
-                                    val ok = updateRepository.checkForUpdates()
-                                    isUpdating = false
-                                    if (!ok) {
-                                        Toast.makeText(context, "Ошибка загрузки обновления", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            } else {
-                                Toast.makeText(context, "Разрешите установку в настройках", Toast.LENGTH_LONG).show()
-                                updateRepository.requestInstallPermission(context as android.app.Activity)
-                            }
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.SystemUpdate,
-                            contentDescription = "Обновить APK",
-                            tint = Color(0xFFFF6D00)
-                        )
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Color.White)
@@ -810,6 +798,107 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
                     Text("Отмена", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    // New Version Available Dialog
+    if (showUpdateDialog && availableUpdateVersion != null) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!downloadProgress.isDownloading) {
+                    showUpdateDialog = false
+                }
+            },
+            containerColor = Color(0xFF161622),
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        "Доступно обновление",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Найдена новая версия $availableUpdateVersion (у вас установлена v${BuildConfig.VERSION_NAME}).",
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 14.sp
+                    )
+                    if (downloadProgress.isDownloading) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress.percent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp),
+                            color = Color(0xFF00E5FF),
+                            trackColor = Color(0xFF242436)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${downloadProgress.percent}%",
+                                color = Color(0xFF00E5FF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${downloadProgress.downloadedMb} / ${downloadProgress.totalMb} МБ",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (downloadProgress.isDownloading) return@Button
+                        if (updateRepository.canInstall()) {
+                            scope.launch {
+                                val ok = updateRepository.checkForUpdates()
+                                if (!ok) {
+                                    Toast.makeText(context, "Ошибка загрузки обновления", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else {
+                            Toast.makeText(context, "Разрешите установку из неизвестных источников", Toast.LENGTH_LONG).show()
+                            updateRepository.requestInstallPermission(context)
+                        }
+                    },
+                    enabled = !downloadProgress.isDownloading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        if (downloadProgress.isDownloading) "Загрузка..." else "Обновить сейчас",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                if (!downloadProgress.isDownloading) {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text("Позже", color = Color.Gray)
+                    }
                 }
             }
         )
