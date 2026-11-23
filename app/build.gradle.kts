@@ -96,7 +96,6 @@ protobuf {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation(platform("androidx.compose:compose-bom:2023.10.01"))
@@ -107,11 +106,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Protobuf & gRPC
+    // Protobuf
     implementation("com.google.protobuf:protobuf-kotlin-lite:3.24.4")
-    implementation("io.grpc:grpc-okhttp:1.58.0")
-    implementation("io.grpc:grpc-protobuf-lite:1.58.0")
-    implementation("io.grpc:grpc-stub:1.58.0")
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.76")
 
     // ADB over Wi-Fi

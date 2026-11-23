@@ -55,10 +55,12 @@ object Logger {
                 FileWriter(file, true).use { writer ->
                     writer.append(line)
                 }
-                val text = file.readText()
-                _logsFlow.value = if (text.length > 15000) text.takeLast(15000) else text
+            }
+            val current = _logsFlow.value
+            _logsFlow.value = if (current.length + line.length > 15000) {
+                (current + line).takeLast(15000)
             } else {
-                _logsFlow.value = (_logsFlow.value + line).takeLast(15000)
+                current + line
             }
         } catch (e: Exception) {
             e.printStackTrace()

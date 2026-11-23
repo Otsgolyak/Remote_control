@@ -50,7 +50,6 @@ data class RemoteState(
     val isConnected: Boolean = false,
     val isConnecting: Boolean = false,
     val isSamsungMode: Boolean = false,
-    val isCompanionCursorActive: Boolean = false,
     val status: String = "Не подключено",
     val selectedDeviceName: String = "Xiaomi TV",
     val selectedDeviceIp: String? = null,
