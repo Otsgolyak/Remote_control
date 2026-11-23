@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -10,14 +13,13 @@ android {
     compileSdk = 34
 
     val versionPropsFile = rootProject.file("version.properties")
-    val versionProps = java.util.Properties().apply {
-        if (versionPropsFile.exists()) {
-            versionPropsFile.inputStream().use { load(it) }
-        }
+    val versionProps = Properties()
+    if (versionPropsFile.exists()) {
+        FileInputStream(versionPropsFile).use { versionProps.load(it) }
     }
-    val major = versionProps.getProperty("major", "1").toInt()
-    val minor = versionProps.getProperty("minor", "0").toInt()
-    val patch = versionProps.getProperty("patch", "0").toInt()
+    val major = (versionProps.getProperty("major") ?: "1").toInt()
+    val minor = (versionProps.getProperty("minor") ?: "0").toInt()
+    val patch = (versionProps.getProperty("patch") ?: "0").toInt()
 
     defaultConfig {
         applicationId = "com.remote.control"
