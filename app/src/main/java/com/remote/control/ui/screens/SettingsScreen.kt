@@ -129,7 +129,7 @@ fun SettingsScreen(
 
                     if (downloadProgress.isDownloading) {
                         LinearProgressIndicator(
-                            progress = { downloadProgress.percent / 100f },
+                            progress = downloadProgress.percent / 100f,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),
