@@ -34,6 +34,11 @@ object AdbCleaner {
     private fun loadOrCreateKeyPair(context: Context): AdbKeyPair {
         val privateKeyFile = File(context.filesDir, "adbkey")
         val publicKeyFile = File(context.filesDir, "adbkey.pub")
+        if (!privateKeyFile.exists() || !publicKeyFile.exists()) {
+            Logger.log("AdbCleaner: ключи не найдены, генерация новой пары ADB-ключей...")
+            AdbKeyPair.generate(privateKeyFile, publicKeyFile)
+            Logger.log("AdbCleaner: новая пара ключей успешно сгенерирована")
+        }
         return AdbKeyPair.read(privateKeyFile, publicKeyFile)
     }
 

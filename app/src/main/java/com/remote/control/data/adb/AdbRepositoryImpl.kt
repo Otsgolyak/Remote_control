@@ -28,6 +28,10 @@ class AdbRepositoryImpl(
         val privateKeyFile = File(context.filesDir, "adbkey")
         val publicKeyFile = File(context.filesDir, "adbkey.pub")
         val existed = privateKeyFile.exists() && publicKeyFile.exists()
+        if (!existed) {
+            Logger.log("ADB: генерация новой пары ключей (${privateKeyFile.name})...")
+            AdbKeyPair.generate(privateKeyFile, publicKeyFile)
+        }
         val keyPair = AdbKeyPair.read(privateKeyFile, publicKeyFile)
         Logger.log(
             if (existed) "ADB: загружена сохраненная пара ключей (${privateKeyFile.name})"
