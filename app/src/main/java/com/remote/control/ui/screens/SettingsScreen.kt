@@ -139,7 +139,7 @@ fun SettingsScreen(
                     }
 
                     Text(
-                        "Включает AdGuard DNS, блокирует телеметрию Xiaomi/Google, отключает рекламу PatchWall и чистит кэш.",
+                        "Включает AdGuard DNS, блокирует рекламу Xiaomi/Google, чистит кэш и устанавливает Media Station X с порталом msx.cc.ua.",
                         color = Color.LightGray,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
