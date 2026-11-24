@@ -289,7 +289,7 @@ fun HomeScreen(
                         iconTint = colorForShortcut(shortcut.iconName),
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            homeViewModel.launchShortcut(shortcut)
+                            homeViewModel.launchShortcut(shortcut, context)
                         },
                         onDelete = if (shortcut.isCustom) {
                             { homeViewModel.removeCustomShortcut(shortcut.title) }
@@ -305,8 +305,7 @@ fun HomeScreen(
                             .border(1.dp, colors.primary, RoundedCornerShape(14.dp))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                shortcutTitle = ""
-                                shortcutUrl = ""
+                                homeViewModel.loadAvailableTvApps(context)
                                 showAddShortcutDialog = true
                             }
                     ) {
@@ -914,64 +913,218 @@ fun HomeScreen(
         )
     }
 
-    // Add Custom App Shortcut Dialog
+    // Add Custom App Shortcut Dialog (выбор из списка установленных/доступных приложений)
     if (showAddShortcutDialog) {
-        val presets = listOf(
-            Triple("Кинопоиск", "https://hd.kinopoisk.ru", "movie"),
-            Triple("VK Видео", "https://vkvideo.ru", "video"),
-            Triple("Rutube", "https://rutube.ru", "youtube"),
-            Triple("Twitch", "https://www.twitch.tv", "video")
-        )
+        var searchQuery by remember { mutableStateOf("") }
+        var selectedCandidate by remember { mutableStateOf<com.remote.control.data.apps.TvAppCandidate?>(null) }
+        var showManualInput by remember { mutableStateOf(false) }
+
+        val availableApps = state.availableTvApps
+        val filteredApps = remember(availableApps, searchQuery) {
+            if (searchQuery.isBlank()) availableApps
+            else availableApps.filter { it.title.contains(searchQuery, ignoreCase = true) }
+        }
+
         AlertDialog(
-            onDismissRequest = { showAddShortcutDialog = false },
+            onDismissRequest = {
+                showAddShortcutDialog = false
+                selectedCandidate = null
+                showManualInput = false
+            },
             containerColor = colors.cardBackground,
-            title = { Text("Добавить приложение", color = colors.textPrimary, fontWeight = FontWeight.Bold) },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Добавить в быстрый запуск",
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    IconButton(onClick = { showManualInput = !showManualInput }) {
+                        Icon(
+                            if (showManualInput) Icons.Default.List else Icons.Default.Edit,
+                            contentDescription = "Режим ввода",
+                            tint = colors.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Быстрые шаблоны:", color = colors.textSecondary, fontSize = 12.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(presets) { (pName, pUrl, pIcon) ->
-                            SuggestionChip(
-                                onClick = {
-                                    shortcutTitle = pName
-                                    shortcutUrl = pUrl
-                                    shortcutIcon = pIcon
-                                },
-                                label = { Text(pName, color = colors.textPrimary, fontSize = 12.sp) }
-                            )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (showManualInput) {
+                        Text(
+                            "Вручную укажите название и ссылку/пакет:",
+                            color = colors.textSecondary,
+                            fontSize = 12.sp
+                        )
+                        OutlinedTextField(
+                            value = shortcutTitle,
+                            onValueChange = { shortcutTitle = it },
+                            label = { Text("Название (например Kinopoisk)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = shortcutUrl,
+                            onValueChange = { shortcutUrl = it },
+                            label = { Text("Ссылка или DeepLink (например https://...)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Поиск приложения...") },
+                            leadingIcon = { Icon(Icons.Default.Search, null, tint = colors.textSecondary) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (state.isLoadingApps) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = colors.primary, modifier = Modifier.size(32.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Опрос приложений на ТВ...", color = colors.textSecondary, fontSize = 12.sp)
+                                }
+                            }
+                        } else if (filteredApps.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    if (searchQuery.isBlank()) "Все доступные приложения уже добавлены" else "Приложение не найдено",
+                                    color = colors.textSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            androidx.compose.foundation.lazy.LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f, fill = false),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(filteredApps) { candidate ->
+                                    val isSelected = selectedCandidate?.packageNameOrAppId == candidate.packageNameOrAppId
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isSelected) colors.primary.copy(alpha = 0.2f) else colors.surface
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(
+                                                1.5.dp,
+                                                if (isSelected) colors.primary else Color.Transparent,
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .clickable {
+                                                selectedCandidate = candidate
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = iconForShortcut(candidate.iconName),
+                                                    contentDescription = null,
+                                                    tint = colorForShortcut(candidate.iconName),
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        candidate.title,
+                                                        color = colors.textPrimary,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    if (candidate.isInstalledOnTv) {
+                                                        Text(
+                                                            "Установлено на ТВ",
+                                                            color = colors.success,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (isSelected) {
+                                                Icon(
+                                                    Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = colors.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    OutlinedTextField(
-                        value = shortcutTitle,
-                        onValueChange = { shortcutTitle = it },
-                        label = { Text("Название (например Кинопоиск)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = shortcutUrl,
-                        onValueChange = { shortcutUrl = it },
-                        label = { Text("Ссылка или DeepLink (например hd.kinopoisk.ru)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (shortcutTitle.isNotBlank() && shortcutUrl.isNotBlank()) {
-                            homeViewModel.addCustomShortcut(shortcutTitle, shortcutUrl, shortcutIcon)
-                            showAddShortcutDialog = false
+                        if (showManualInput) {
+                            if (shortcutTitle.isNotBlank() && shortcutUrl.isNotBlank()) {
+                                homeViewModel.addCustomShortcut(shortcutTitle, shortcutUrl, "tv")
+                                showAddShortcutDialog = false
+                                shortcutTitle = ""
+                                shortcutUrl = ""
+                                showManualInput = false
+                            }
+                        } else {
+                            val chosen = selectedCandidate
+                            if (chosen != null) {
+                                val link = chosen.deepLink.ifBlank { chosen.packageNameOrAppId }
+                                homeViewModel.addCustomShortcut(chosen.title, link, chosen.iconName)
+                                showAddShortcutDialog = false
+                                selectedCandidate = null
+                            }
                         }
                     },
+                    enabled = (showManualInput && shortcutTitle.isNotBlank() && shortcutUrl.isNotBlank()) ||
+                        (!showManualInput && selectedCandidate != null),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.success)
                 ) {
                     Text("Добавить", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddShortcutDialog = false }) {
+                TextButton(onClick = {
+                    showAddShortcutDialog = false
+                    selectedCandidate = null
+                    showManualInput = false
+                }) {
                     Text("Отмена", color = colors.textSecondary)
                 }
             }

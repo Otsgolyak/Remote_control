@@ -25,6 +25,12 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
+data class SamsungAppInfo(
+    val appId: String,
+    val appName: String,
+    val isVisible: Boolean = true
+)
+
 class SamsungConnectionManager(context: Context) {
     private val prefs = context.getSharedPreferences("samsung_tv_prefs", Context.MODE_PRIVATE)
     private var webSocket: WebSocket? = null
@@ -32,6 +38,9 @@ class SamsungConnectionManager(context: Context) {
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<SamsungAppInfo>>(emptyList())
+    val installedApps: StateFlow<List<SamsungAppInfo>> = _installedApps.asStateFlow()
 
     private val client: OkHttpClient by lazy {
         val trustAll = object : X509TrustManager {
@@ -90,6 +99,25 @@ class SamsungConnectionManager(context: Context) {
                             prefs.edit().putString("token_$ip", token).apply()
                             Logger.log("Samsung Tizen: Токен успешно сохранен ($token)")
                         }
+                        // Запрашиваем установленные приложения у Samsung TV
+                        requestInstalledApps()
+                    } else if (event == "ed.installedApp.get") {
+                        val dataObj = json.optJSONObject("data")
+                        val dataArr = dataObj?.optJSONArray("data")
+                        if (dataArr != null) {
+                            val list = mutableListOf<SamsungAppInfo>()
+                            for (i in 0 until dataArr.length()) {
+                                val item = dataArr.optJSONObject(i) ?: continue
+                                val appId = item.optString("appId")
+                                val appName = item.optString("appName")
+                                val isVisible = item.optBoolean("isVisible", true)
+                                if (appId.isNotBlank() && appName.isNotBlank()) {
+                                    list.add(SamsungAppInfo(appId = appId, appName = appName, isVisible = isVisible))
+                                }
+                            }
+                            _installedApps.value = list
+                            Logger.log("Samsung Tizen: получено ${list.size} установленных приложений")
+                        }
                     }
                 } catch (e: Exception) {
                     Logger.log("Samsung Tizen JSON error: ${e.message}")
@@ -110,6 +138,21 @@ class SamsungConnectionManager(context: Context) {
                 _isConnected.value = false
             }
         })
+    }
+
+    fun requestInstalledApps() {
+        val ws = webSocket
+        if (ws != null) {
+            val payload = JSONObject().apply {
+                put("method", "ms.channel.emit")
+                put("params", JSONObject().apply {
+                    put("event", "ed.installedApp.get")
+                    put("to", "host")
+                })
+            }
+            Logger.log("Samsung Tizen: отправка запроса ed.installedApp.get")
+            ws.send(payload.toString())
+        }
     }
 
     fun launchApp(appTitle: String) {

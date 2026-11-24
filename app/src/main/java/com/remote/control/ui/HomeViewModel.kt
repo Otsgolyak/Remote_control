@@ -68,6 +68,8 @@ data class RemoteState(
     val btMouseStatus: String = "Тачпад (Wi-Fi) / Курсор на ТВ",
     val btPairingPromptDevice: String? = null,
     val apps: List<AppShortcut> = defaultShortcuts,
+    val availableTvApps: List<com.remote.control.data.apps.TvAppCandidate> = emptyList(),
+    val isLoadingApps: Boolean = false,
     val mouseSensitivity: Float = 1.5f,
     val cursorPosition: Pair<Float, Float> = Pair(0f, 0f)
 )
@@ -687,7 +689,40 @@ class HomeViewModel(
         }
     }
 
-    fun launchShortcut(shortcut: AppShortcut) {
+    fun loadAvailableTvApps(context: android.content.Context) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingApps = true)
+            try {
+                val isSamsung = _uiState.value.isSamsungMode
+                val deviceIp = _uiState.value.selectedDeviceIp
+                if (isSamsung) {
+                    samsungConnectionManager.requestInstalledApps()
+                    delay(300)
+                }
+                val allApps = com.remote.control.data.apps.TvAppCatalog.getAvailableTvApps(
+                    context = context,
+                    deviceIp = deviceIp,
+                    isSamsung = isSamsung,
+                    samsungManager = samsungConnectionManager
+                )
+                // Исключаем те, что уже есть на главном экране в быстром запуске
+                val currentShortcuts = _uiState.value.apps
+                val filtered = allApps.filter { candidate ->
+                    currentShortcuts.none { existing ->
+                        existing.title.equals(candidate.title, ignoreCase = true) ||
+                            (candidate.deepLink.isNotBlank() && existing.deepLink.equals(candidate.deepLink, ignoreCase = true))
+                    }
+                }
+                _uiState.value = _uiState.value.copy(availableTvApps = filtered, isLoadingApps = false)
+                Logger.log("HomeViewModel.loadAvailableTvApps: доступно для добавления ${filtered.size} приложений")
+            } catch (e: Exception) {
+                Logger.log("HomeViewModel.loadAvailableTvApps ошибка: ${e.message}")
+                _uiState.value = _uiState.value.copy(isLoadingApps = false)
+            }
+        }
+    }
+
+    fun launchShortcut(shortcut: AppShortcut, context: android.content.Context? = null) {
         viewModelScope.launch {
             if (_uiState.value.isSamsungMode) {
                 samsungConnectionManager.launchApp(shortcut.title)
@@ -697,6 +732,41 @@ class HomeViewModel(
                 sendKey(shortcut.fallbackKey)
                 return@launch
             }
+
+            // Попытка прямого запуска через ADB по пакету, если deepLink или пакет известен
+            val targetIp = _uiState.value.selectedDeviceIp
+            if (!targetIp.isNullOrBlank() && context != null) {
+                val adbSuccess = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    try {
+                        val keyPairFile = java.io.File(context.filesDir, "adbkey")
+                        val pubFile = java.io.File(context.filesDir, "adbkey.pub")
+                        if (keyPairFile.exists() && pubFile.exists()) {
+                            val kp = dadb.AdbKeyPair.read(keyPairFile, pubFile)
+                            dadb.Dadb.create(targetIp, 5555, kp).use { dadb ->
+                                val pkgCandidate = if (!shortcut.deepLink.startsWith("http") && !shortcut.deepLink.contains("/")) {
+                                    shortcut.deepLink
+                                } else {
+                                    com.remote.control.data.apps.TvAppCatalog.POPULAR_APPS.find {
+                                        it.title.equals(shortcut.title, ignoreCase = true)
+                                    }?.packageNameOrAppId
+                                }
+                                if (!pkgCandidate.isNullOrBlank()) {
+                                    Logger.log("HomeViewModel.launchShortcut: ADB запуск monkey -p $pkgCandidate")
+                                    dadb.shell("monkey -p $pkgCandidate -c android.intent.category.LAUNCHER 1")
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        } else false
+                    } catch (e: Exception) {
+                        Logger.log("HomeViewModel.launchShortcut: ADB запуск не удался (${e.message})")
+                        false
+                    }
+                }
+                if (adbSuccess) return@launch
+            }
+
             if (shortcut.deepLink.isNotBlank()) {
                 Logger.log("Запуск ярлыка приложения: ${shortcut.title} (${shortcut.deepLink})")
                 val msg = RemoteMessage.newBuilder()
