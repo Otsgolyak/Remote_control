@@ -564,16 +564,25 @@ class AirMouseController(context: Context) : SensorEventListener {
                     }
 
                     // Ждем пока устройство перейдет в BOND_BONDED (обработается в BroadcastReceiver)
-                    // или пока пользователь подтвердит запрос
-                    for (step in 1..20) { // до 10 секунд ожидания сопряжения
+                    // или пока пользователь подтвердит запрос на ТВ / в приложении (до 60 секунд)
+                    for (step in 1..120) { // до 60 секунд ожидания сопряжения
                         delay(500L)
                         if (device.bondState == BluetoothDevice.BOND_BONDED || _isBtConnected.value) {
+                            break
+                        }
+                        if (step % 10 == 0 && device.bondState == BluetoothDevice.BOND_BONDING) {
+                            val remainingSec = (120 - step) / 2
+                            _btStatus.value = "Ожидание сопряжения на ТВ ($remainingSec сек)..."
+                        }
+                        // Если пользователь закрыл диалог сопряжения и bondState сбросился
+                        if (_btPairingPromptDevice.value == null && device.bondState == BluetoothDevice.BOND_NONE && step > 20) {
+                            Logger.log("BT Автоподключение: сопряжение отменено пользователем")
                             break
                         }
                     }
 
                     if (device.bondState != BluetoothDevice.BOND_BONDED && !_isBtConnected.value) {
-                        Logger.log("BT Автоподключение: сопряжение с \"$devName\" не завершено вовремя, пробуем подключиться или переходим дальше")
+                        Logger.log("BT Автоподключение: сопряжение с \"$devName\" не завершено вовремя (тайм-аут 60с)")
                     }
                 }
 

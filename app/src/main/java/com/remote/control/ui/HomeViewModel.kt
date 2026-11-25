@@ -311,6 +311,11 @@ class HomeViewModel(
 
     fun connectToSavedDevice(device: Device, onConnected: () -> Unit = {}) {
         viewModelScope.launch {
+            if (!isConnecting.compareAndSet(false, true)) {
+                Logger.log("Подключение к ${device.ip} уже выполняется, пропускаем повторный запуск")
+                return@launch
+            }
+
             _uiState.value = _uiState.value.copy(
                 selectedDeviceName = device.name,
                 selectedDeviceIp = device.ip,
@@ -321,33 +326,63 @@ class HomeViewModel(
             )
             repository.setSelectedDevice(device.ip)
 
-            if (device.isSamsung) {
-                connectionManager.disconnect()
-                samsungConnectionManager.connect(device.ip)
-                delay(500)
-                _uiState.value = _uiState.value.copy(isConnecting = false)
-                onConnected()
-                return@launch
-            }
-
-            samsungConnectionManager.disconnect()
-
             try {
-                connectionManager.connect(device.ip, 6466)
-                delay(400)
-                if (connectionManager.isConnected.value) {
-                    _uiState.value = _uiState.value.copy(
-                        isConnecting = false,
-                        status = "Android TV Подключено (${device.ip})"
-                    )
+                if (device.isSamsung) {
+                    connectionManager.disconnect()
+                    samsungConnectionManager.connect(device.ip)
+                    delay(500)
+                    _uiState.value = _uiState.value.copy(isConnecting = false)
                     onConnected()
-                } else {
-                    Logger.log("ТВ ${device.ip} требует сопряжения по PIN-коду, запуск Pairing...")
-                    initiatePairing(device.name, device.ip)
+                    return@launch
                 }
-            } catch (e: Exception) {
-                Logger.log("Прямое подключение к ${device.ip}:6466 не удалось (${e.message}), пробуем сопряжение 6467...")
-                initiatePairing(device.name, device.ip)
+
+                samsungConnectionManager.disconnect()
+
+                try {
+                    connectionManager.connect(device.ip, 6466)
+                    delay(400)
+                    if (connectionManager.isConnected.value) {
+                        _uiState.value = _uiState.value.copy(
+                            isConnecting = false,
+                            status = "Android TV Подключено (${device.ip})"
+                        )
+                        onConnected()
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            isConnecting = false,
+                            status = "Не удалось подключиться к ${device.ip}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    val isNetworkError = e is java.net.SocketTimeoutException ||
+                        e is java.net.ConnectException ||
+                        e is java.net.NoRouteToHostException ||
+                        e.message?.contains("failed to connect", ignoreCase = true) == true ||
+                        e.message?.contains("timed out", ignoreCase = true) == true ||
+                        e.message?.contains("refused", ignoreCase = true) == true ||
+                        e.message?.contains("ECONNREFUSED", ignoreCase = true) == true ||
+                        e.message?.contains("EHOSTUNREACH", ignoreCase = true) == true ||
+                        e.message?.contains("ENETUNREACH", ignoreCase = true) == true
+
+                    val isSslError = e is javax.net.ssl.SSLException ||
+                        e.cause is javax.net.ssl.SSLException ||
+                        e.message?.contains("handshake", ignoreCase = true) == true ||
+                        e.message?.contains("certificate", ignoreCase = true) == true ||
+                        e.message?.contains("ssl", ignoreCase = true) == true
+
+                    if (isSslError && !isNetworkError) {
+                        Logger.log("ТВ ${device.ip} отклонил SSL-сертификат, требуется сопряжение: ${e.message}")
+                        initiatePairing(device.name, device.ip)
+                    } else {
+                        Logger.log("Ошибка сетевого подключения к ${device.ip}:6466 (${e.message}). ТВ выключен или недоступен.")
+                        _uiState.value = _uiState.value.copy(
+                            isConnecting = false,
+                            status = "Телевизор не отвечает по сети (возможно, выключен)"
+                        )
+                    }
+                }
+            } finally {
+                isConnecting.set(false)
             }
         }
     }
@@ -576,7 +611,9 @@ class HomeViewModel(
             }
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp ?: return@launch
-                runCatching { connectionManager.connect(ip, 6466) }
+                if (!isConnecting.get()) {
+                    runCatching { connectionManager.connect(ip, 6466) }
+                }
             }
             connectionManager.sendText(text)
         }
@@ -608,7 +645,7 @@ class HomeViewModel(
             }
             if (!connectionManager.isConnected.value) {
                 val ip = _uiState.value.selectedDeviceIp
-                if (ip != null) {
+                if (ip != null && !isConnecting.get()) {
                     runCatching { connectionManager.connect(ip, 6466) }
                 }
             }
