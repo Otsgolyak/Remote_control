@@ -50,6 +50,11 @@ fun SettingsScreen(
     var isSendingBugReport by remember { mutableStateOf(false) }
     var isCleaningTv by remember { mutableStateOf(false) }
     var cleanResultDialog by remember { mutableStateOf<AdbCleanResult?>(null) }
+    var showFeedbackDialog by remember { mutableStateOf(false) }
+    var feedbackSenderName by remember { mutableStateOf("") }
+    var feedbackMessageText by remember { mutableStateOf("") }
+    var attachLogsToEmail by remember { mutableStateOf(true) }
+    var isLogsExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = colors.background,
@@ -65,12 +70,14 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 "Xiaomi TV Remote v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
@@ -388,16 +395,46 @@ fun SettingsScreen(
                 }
             }
 
+            // Раздел обратной связи и диагностики
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Button(
+                    onClick = { showFeedbackDialog = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Email,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "Обратная связь",
+                            color = colors.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
                 Button(
                     enabled = !isSendingBugReport,
                     onClick = {
                         isSendingBugReport = true
-                        Toast.makeText(context, "Отправка логов на GitHub...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Отправка баг-репорта на GitHub...", Toast.LENGTH_SHORT).show()
                         scope.launch {
                             val result = BugReportSender.sendReport()
                             isSendingBugReport = false
@@ -411,11 +448,13 @@ fun SettingsScreen(
                             }
                         }
                     },
-                    modifier = Modifier.weight(1.5f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.warning.copy(alpha = 0.15f)),
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, colors.warning.copy(alpha = 0.5f)),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -436,116 +475,150 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            if (isSendingBugReport) "Отправка..." else "Создать репорт",
+                            if (isSendingBugReport) "Отправка..." else "Баг-репорт",
                             color = colors.warning,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
                     }
                 }
-
-                Button(
-                    onClick = {
-                        Logger.sendLogsByEmail(context)
-                    },
-                    modifier = Modifier.weight(1.1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Email,
-                            contentDescription = null,
-                            tint = colors.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            "Почта",
-                            color = colors.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("RemoteLogs", logsText))
-                        Toast.makeText(context, "Логи скопированы", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.weight(0.9f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
-                    border = BorderStroke(1.dp, colors.cardBorder),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            tint = colors.textSecondary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text("Копия", fontSize = 11.sp, color = colors.textPrimary)
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = { Logger.clearLogs() },
-                    modifier = Modifier.weight(0.9f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
-                    border = BorderStroke(1.dp, colors.error.copy(alpha = 0.4f)),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.DeleteOutline,
-                            contentDescription = null,
-                            tint = colors.error,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text("Сброс", fontSize = 11.sp, color = colors.error)
-                    }
-                }
             }
 
-            Text(
-                "Журнал событий (logs.txt → otsgolyak@gmail.com):",
-                color = colors.textSecondary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(
-                        if (colors.isDark) Color(0xFF14141C) else Color(0xFFEDF2F7),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .padding(10.dp)
-                    .verticalScroll(rememberScrollState())
+            // Журнал событий (логи диагностики)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, colors.cardBorder)
             ) {
-                Text(
-                    text = logsText.ifBlank { "Логи инициализированы..." },
-                    color = if (colors.isDark) Color(0xFF34C759) else Color(0xFF1B5E20),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp
-                )
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                "Журнал событий (Логи)",
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        TextButton(
+                            onClick = { isLogsExpanded = !isLogsExpanded },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    if (isLogsExpanded) "Скрыть" else "Показать",
+                                    color = colors.primary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Icon(
+                                    if (isLogsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (isLogsExpanded) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cm.setPrimaryClip(ClipData.newPlainText("RemoteLogs", logsText))
+                                    Toast.makeText(context, "Логи скопированы в буфер обмена", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
+                                border = BorderStroke(1.dp, colors.cardBorder),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        tint = colors.textSecondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text("Копировать", fontSize = 11.sp, color = colors.textPrimary)
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    Logger.clearLogs()
+                                    Toast.makeText(context, "Журнал логов очищен", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
+                                border = BorderStroke(1.dp, colors.error.copy(alpha = 0.4f)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = colors.error,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text("Очистить", fontSize = 11.sp, color = colors.error)
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 220.dp)
+                                .background(
+                                    if (colors.isDark) Color(0xFF14141C) else Color(0xFFEDF2F7),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = logsText.ifBlank { "Логи пусты" },
+                                color = if (colors.isDark) Color(0xFF34C759) else Color(0xFF1B5E20),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -579,6 +652,111 @@ fun SettingsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
                     Text("OK", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (showFeedbackDialog) {
+        AlertDialog(
+            onDismissRequest = { showFeedbackDialog = false },
+            containerColor = colors.cardBackground,
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Email, contentDescription = null, tint = colors.primary)
+                    Text("Обратная связь", color = colors.textPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        "Напишите ваше имя и текст обращения. По нажатию «Отправить» откроется почтовое приложение для отправки письма разработчику.",
+                        color = colors.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    OutlinedTextField(
+                        value = feedbackSenderName,
+                        onValueChange = { feedbackSenderName = it },
+                        label = { Text("Ваше имя (необязательно)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primary,
+                            unfocusedBorderColor = colors.cardBorder,
+                            focusedLabelColor = colors.primary,
+                            unfocusedLabelColor = colors.textSecondary,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = feedbackMessageText,
+                        onValueChange = { feedbackMessageText = it },
+                        label = { Text("Текст письма / описание проблемы") },
+                        placeholder = { Text("Опишите, что произошло или ваше пожелание...") },
+                        minLines = 3,
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primary,
+                            unfocusedBorderColor = colors.cardBorder,
+                            focusedLabelColor = colors.primary,
+                            unfocusedLabelColor = colors.textSecondary,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Checkbox(
+                            checked = attachLogsToEmail,
+                            onCheckedChange = { attachLogsToEmail = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = colors.primary,
+                                uncheckedColor = colors.textSecondary
+                            )
+                        )
+                        Text(
+                            "Прикрепить журнал событий (логи)",
+                            color = colors.textPrimary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = feedbackMessageText.isNotBlank(),
+                    onClick = {
+                        Logger.sendFeedbackByEmail(
+                            context = context,
+                            senderName = feedbackSenderName,
+                            message = feedbackMessageText,
+                            attachLogs = attachLogsToEmail
+                        )
+                        showFeedbackDialog = false
+                        feedbackMessageText = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) {
+                    Text("Отправить", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFeedbackDialog = false }) {
+                    Text("Отмена", color = colors.textSecondary)
                 }
             }
         )

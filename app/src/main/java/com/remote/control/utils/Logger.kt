@@ -77,20 +77,40 @@ object Logger {
         }
     }
 
-    fun sendLogsByEmail(context: Context, subjectPrefix: String = "Xiaomi TV Remote Logs") {
-        log("sendLogsByEmail: подготовка отправки отчета на otsgolyak@gmail.com")
+    fun sendFeedbackByEmail(
+        context: Context,
+        senderName: String,
+        message: String,
+        attachLogs: Boolean = true
+    ) {
+        log("sendFeedbackByEmail: подготовка отправки сообщения разработчику")
         try {
-            val file = getLogFile()
-            val logContent = file?.takeIf { it.exists() }?.readText()?.ifBlank { _logsFlow.value.ifBlank { "Логи пусты" } }
-                ?: _logsFlow.value.ifBlank { "Логи пусты" }
+            val file = if (attachLogs) getLogFile() else null
+            val logContent = if (attachLogs) {
+                file?.takeIf { it.exists() }?.readText()?.ifBlank { _logsFlow.value.ifBlank { "Логи пусты" } }
+                    ?: _logsFlow.value.ifBlank { "Логи пусты" }
+            } else ""
 
-            val subject = "$subjectPrefix (v${BuildConfig.VERSION_NAME})"
+            val subject = "Xiaomi TV Remote: Обратная связь${if (senderName.isNotBlank()) " от $senderName" else ""} (v${BuildConfig.VERSION_NAME})"
+
+            val body = buildString {
+                if (senderName.isNotBlank()) {
+                    append("От кого: ").append(senderName).append("\n")
+                }
+                append("Версия приложения: v").append(BuildConfig.VERSION_NAME).append(" (build ").append(BuildConfig.VERSION_CODE).append(")\n\n")
+                append("Сообщение:\n")
+                append(message.trim())
+                if (attachLogs && logContent.isNotBlank()) {
+                    append("\n\n--- Диагностический журнал (последние события) ---\n")
+                    append(logContent.takeLast(8000))
+                }
+            }
 
             val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("mailto:otsgolyak@gmail.com")
                 putExtra(Intent.EXTRA_SUBJECT, subject)
-                putExtra(Intent.EXTRA_TEXT, "Отчет логов приложения Xiaomi TV Remote (v${BuildConfig.VERSION_NAME}):\n\n$logContent")
-                if (file != null && file.exists()) {
+                putExtra(Intent.EXTRA_TEXT, body)
+                if (attachLogs && file != null && file.exists()) {
                     try {
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
                         putExtra(Intent.EXTRA_STREAM, uri)
@@ -102,30 +122,29 @@ object Logger {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
-            val chooser = Intent.createChooser(emailIntent, "Отправить логи на otsgolyak@gmail.com").apply {
+            val chooser = Intent.createChooser(emailIntent, "Отправить сообщение разработчику").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
             Toast.makeText(context, "Открытие почтового приложения...", Toast.LENGTH_SHORT).show()
             context.startActivity(chooser)
-            log("sendLogsByEmail: диалог отправки почты запущен")
+            log("sendFeedbackByEmail: диалог отправки почты запущен")
         } catch (e: Exception) {
-            log("sendLogsByEmail ошибка primary: ${e.message}, пробуем fallback mailto...")
+            log("sendFeedbackByEmail ошибка primary: ${e.message}, пробуем fallback mailto...")
             try {
-                val body = Uri.encode(_logsFlow.value.takeLast(4000))
-                val mailto = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:otsgolyak@gmail.com?subject=Remote%20Logs&body=$body")).apply {
+                val encodedBody = Uri.encode(message.take(2000))
+                val mailto = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:otsgolyak@gmail.com?subject=Remote%20Feedback&body=$encodedBody")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(mailto)
-                log("sendLogsByEmail: Fallback mailto успешно запущен")
             } catch (e2: Exception) {
-                log("sendLogsByEmail: не удалось открыть почтовый клиент: ${e2.message}")
-                try {
-                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    cm?.setPrimaryClip(ClipData.newPlainText("RemoteLogs", _logsFlow.value))
-                    Toast.makeText(context, "Почтовый клиент не найден. Логи скопированы в буфер обмена.", Toast.LENGTH_LONG).show()
-                } catch (_: Exception) {}
+                log("sendFeedbackByEmail: не удалось открыть почтовый клиент: ${e2.message}")
+                Toast.makeText(context, "Почтовый клиент не найден на устройстве", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    fun sendLogsByEmail(context: Context, subjectPrefix: String = "Xiaomi TV Remote Logs") {
+        sendFeedbackByEmail(context, senderName = "", message = "Диагностические логи приложения.", attachLogs = true)
     }
 }
