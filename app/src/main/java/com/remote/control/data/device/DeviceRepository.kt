@@ -27,6 +27,7 @@ class DeviceRepository(private val context: Context) {
     private val SELECTED_IP_KEY = stringPreferencesKey("selected_device_ip")
     private val SHORTCUTS_KEY = stringPreferencesKey("custom_shortcuts")
     private val DARK_THEME_KEY = androidx.datastore.preferences.core.booleanPreferencesKey("is_dark_theme")
+    private val SUBSCRIPTION_TIER_KEY = stringPreferencesKey("subscription_tier")
 
     val isDarkTheme: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[DARK_THEME_KEY] ?: false // По умолчанию светлая тема (false)
@@ -35,6 +36,16 @@ class DeviceRepository(private val context: Context) {
     suspend fun setDarkTheme(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[DARK_THEME_KEY] = enabled
+        }
+    }
+
+    val subscriptionTier: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[SUBSCRIPTION_TIER_KEY] ?: "Free"
+    }
+
+    suspend fun setSubscriptionTier(tier: String) {
+        context.dataStore.edit { preferences ->
+            preferences[SUBSCRIPTION_TIER_KEY] = tier
         }
     }
 

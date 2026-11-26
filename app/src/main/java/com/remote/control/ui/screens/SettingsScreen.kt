@@ -43,10 +43,12 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val state by homeViewModel.uiState.collectAsState()
     val isDarkTheme by homeViewModel.isDarkTheme.collectAsState()
+    val subscriptionTier by homeViewModel.subscriptionTier.collectAsState()
     val colors = AppTheme.colors
     val logsText by Logger.logsFlow.collectAsState()
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     val downloadProgress by updateRepository.downloadProgress.collectAsState()
+    var promoCodeInput by remember { mutableStateOf("") }
     var isSendingBugReport by remember { mutableStateOf(false) }
     var isSendingFeedback by remember { mutableStateOf(false) }
     var isCleaningTv by remember { mutableStateOf(false) }
@@ -134,6 +136,97 @@ fun SettingsScreen(
                             uncheckedTrackColor = colors.divider
                         )
                     )
+                }
+            }
+
+            // Тарифный план и ввод промокода (Free / Premium)
+            val isPremium = subscriptionTier.equals("Premium", ignoreCase = true)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, if (isPremium) Color(0xFFFFB300) else colors.cardBorder)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                if (isPremium) Icons.Default.WorkspacePremium else Icons.Default.CardGiftcard,
+                                contentDescription = null,
+                                tint = if (isPremium) Color(0xFFFFB300) else colors.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column {
+                                Text(
+                                    "Тарифный план",
+                                    color = colors.textPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Текущий статус: $subscriptionTier",
+                                    color = colors.textSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isPremium) Color(0xFFFFB300).copy(alpha = 0.2f) else colors.actionButton,
+                            border = BorderStroke(1.dp, if (isPremium) Color(0xFFFFB300) else colors.cardBorder)
+                        ) {
+                            Text(
+                                text = subscriptionTier,
+                                color = if (isPremium) Color(0xFFFFB300) else colors.actionButtonText,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = promoCodeInput,
+                            onValueChange = { promoCodeInput = it },
+                            placeholder = { Text("Введите промокод (1 или 2)", fontSize = 13.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        Button(
+                            onClick = {
+                                val result = homeViewModel.applyPromoCode(promoCodeInput)
+                                if (result != null) {
+                                    Toast.makeText(context, "Активирован тариф: $result", Toast.LENGTH_SHORT).show()
+                                    promoCodeInput = ""
+                                } else {
+                                    Toast.makeText(context, "Неверный промокод", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.height(52.dp)
+                        ) {
+                            Text("OK", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 

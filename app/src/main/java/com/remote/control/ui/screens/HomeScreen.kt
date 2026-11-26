@@ -7,6 +7,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +59,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val state by homeViewModel.uiState.collectAsState()
+    val subscriptionTier by homeViewModel.subscriptionTier.collectAsState()
     val colors = AppTheme.colors
     var selectedTab by remember { mutableIntStateOf(0) }
     var keyboardText by remember { mutableStateOf("") }
@@ -200,25 +202,25 @@ fun HomeScreen(
                 },
                 title = {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(
                             horizontalAlignment = Alignment.Start,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onNavigateToPairing() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
                                     text = state.selectedDeviceName,
                                     color = colors.textPrimary,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -240,7 +242,7 @@ fun HomeScreen(
                                         .background(if (state.isConnected) colors.success else colors.error)
                                 )
                                 Text(
-                                    text = state.status,
+                                    text = if (state.isConnected) "Connected" else "Not connected",
                                     color = if (state.isConnected) colors.success else colors.error,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -254,22 +256,52 @@ fun HomeScreen(
                                     newTvName = state.selectedDeviceName
                                     showRenameDialog = true
                                 },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "Переименовать ТВ",
                                     tint = colors.primary,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        // Центральный бейдж: Free / Premium
+                        val isPremium = subscriptionTier.equals("Premium", ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isPremium) Color(0xFFFFB300).copy(alpha = 0.15f) else colors.cardBackground,
+                            border = BorderStroke(1.dp, if (isPremium) Color(0xFFFFB300) else colors.cardBorder)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isPremium) {
+                                    Icon(
+                                        Icons.Default.Star,
+                                        contentDescription = "Premium",
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                Text(
+                                    text = subscriptionTier,
+                                    color = if (isPremium) Color(0xFFFFB300) else colors.textSecondary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToPairing) {
-                        Icon(Icons.Default.Tv, contentDescription = "Список ТВ", tint = colors.primary)
-                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = colors.textPrimary)
                     }

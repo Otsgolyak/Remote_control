@@ -110,6 +110,27 @@ class HomeViewModel(
         }
     }
 
+    val subscriptionTier: StateFlow<String> = repository.subscriptionTier.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = "Free"
+    )
+
+    fun applyPromoCode(code: String): String? {
+        val trimmed = code.trim().lowercase()
+        val newTier = when {
+            trimmed == "1" || trimmed == "free" || trimmed == "promo1" || trimmed == "промокод 1" || trimmed == "промокод1" -> "Free"
+            trimmed == "2" || trimmed == "premium" || trimmed == "promo2" || trimmed == "промокод 2" || trimmed == "промокод2" || trimmed == "pro" -> "Premium"
+            else -> null
+        }
+        if (newTier != null) {
+            viewModelScope.launch {
+                repository.setSubscriptionTier(newTier)
+            }
+        }
+        return newTier
+    }
+
     init {
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
