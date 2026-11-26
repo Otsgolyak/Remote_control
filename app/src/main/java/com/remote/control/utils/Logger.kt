@@ -101,24 +101,13 @@ object Logger {
                 append("Сообщение:\n")
                 append(message.trim())
                 if (attachLogs && logContent.isNotBlank()) {
-                    append("\n\n--- Диагностический журнал (последние события) ---\n")
-                    append(logContent.takeLast(8000))
+                    append("\n\n--- Диагностический журнал ---\n")
+                    append(logContent.takeLast(4000))
                 }
             }
 
-            val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("mailto:otsgolyak@gmail.com")
-                putExtra(Intent.EXTRA_SUBJECT, subject)
-                putExtra(Intent.EXTRA_TEXT, body)
-                if (attachLogs && file != null && file.exists()) {
-                    try {
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    } catch (fe: Exception) {
-                        log("FileProvider getUriForFile предупреждение: ${fe.message}")
-                    }
-                }
+            val mailtoUri = Uri.parse("mailto:otsgolyak@gmail.com?subject=${Uri.encode(subject)}&body=${Uri.encode(body)}")
+            val emailIntent = Intent(Intent.ACTION_SENDTO, mailtoUri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
@@ -130,17 +119,8 @@ object Logger {
             context.startActivity(chooser)
             log("sendFeedbackByEmail: диалог отправки почты запущен")
         } catch (e: Exception) {
-            log("sendFeedbackByEmail ошибка primary: ${e.message}, пробуем fallback mailto...")
-            try {
-                val encodedBody = Uri.encode(message.take(2000))
-                val mailto = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:otsgolyak@gmail.com?subject=Remote%20Feedback&body=$encodedBody")).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(mailto)
-            } catch (e2: Exception) {
-                log("sendFeedbackByEmail: не удалось открыть почтовый клиент: ${e2.message}")
-                Toast.makeText(context, "Почтовый клиент не найден на устройстве", Toast.LENGTH_LONG).show()
-            }
+            log("sendFeedbackByEmail ошибка: ${e.message}")
+            Toast.makeText(context, "Не удалось открыть почтовый клиент", Toast.LENGTH_LONG).show()
         }
     }
 

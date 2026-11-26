@@ -48,6 +48,7 @@ fun SettingsScreen(
     val updateRepository = remember { UpdateRepositoryImpl(context) }
     val downloadProgress by updateRepository.downloadProgress.collectAsState()
     var isSendingBugReport by remember { mutableStateOf(false) }
+    var isSendingFeedback by remember { mutableStateOf(false) }
     var isCleaningTv by remember { mutableStateOf(false) }
     var cleanResultDialog by remember { mutableStateOf<AdbCleanResult?>(null) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
@@ -676,7 +677,7 @@ fun SettingsScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        "Напишите ваше имя и текст обращения. По нажатию «Отправить» откроется почтовое приложение для отправки письма разработчику.",
+                        "Напишите ваше имя и текст обращения. Сообщение и диагностические логи будут отправлены напрямую разработчику.",
                         color = colors.textSecondary,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
@@ -738,20 +739,55 @@ fun SettingsScreen(
             },
             confirmButton = {
                 Button(
-                    enabled = feedbackMessageText.isNotBlank(),
+                    enabled = feedbackMessageText.isNotBlank() && !isSendingFeedback,
                     onClick = {
-                        Logger.sendFeedbackByEmail(
-                            context = context,
-                            senderName = feedbackSenderName,
-                            message = feedbackMessageText,
-                            attachLogs = attachLogsToEmail
-                        )
-                        showFeedbackDialog = false
-                        feedbackMessageText = ""
+                        isSendingFeedback = true
+                        scope.launch {
+                            val result = BugReportSender.sendFeedback(
+                                senderName = feedbackSenderName,
+                                message = feedbackMessageText,
+                                attachLogs = attachLogsToEmail
+                            )
+                            isSendingFeedback = false
+                            when (result) {
+                                is BugReportResult.Success -> {
+                                    Toast.makeText(context, "✅ Ваше сообщение успешно отправлено разработчику!", Toast.LENGTH_LONG).show()
+                                    showFeedbackDialog = false
+                                    feedbackMessageText = ""
+                                }
+                                is BugReportResult.Error -> {
+                                    Toast.makeText(context, "Не удалось отправить напрямую (${result.message}). Открываем почту...", Toast.LENGTH_LONG).show()
+                                    Logger.sendFeedbackByEmail(
+                                        context = context,
+                                        senderName = feedbackSenderName,
+                                        message = feedbackMessageText,
+                                        attachLogs = attachLogsToEmail
+                                    )
+                                    showFeedbackDialog = false
+                                    feedbackMessageText = ""
+                                }
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
                 ) {
-                    Text("Отправить", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (isSendingFeedback) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = if (colors.isDark) Color.Black else Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        Text(
+                            if (isSendingFeedback) "Отправка..." else "Отправить",
+                            color = if (colors.isDark) Color.Black else Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             dismissButton = {
