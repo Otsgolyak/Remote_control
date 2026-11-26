@@ -58,9 +58,6 @@ fun PairingScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = { homeViewModel.startDiscovery() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить поиск", tint = colors.primary)
-                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Настройки и логи", tint = colors.textPrimary)
                     }

@@ -731,29 +731,13 @@ fun HomeScreen(
                 }
             }
 
-            // 5. Bottom Volume, Back, Source & Exit Row
+            // 5. Bottom Volume, Source & Exit Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_DOWN) }) {
-                    Text("VOL -")
-                }
-                IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_MUTE) }) {
-                    Icon(Icons.Default.VolumeOff, contentDescription = "Mute", tint = colors.textPrimary)
-                }
-                Button(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_UP) }) {
-                    Text("VOL +")
-                }
-                // Дополнительная кнопка быстрого возврата прямо под большим пальцем
-                FilledTonalIconButton(
-                    onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.actionButton)
-                ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.primary)
-                }
-                // Кнопка выбора источника сигнала (HDMI 1/2/3/TV) с открытием меню
+                // Кнопка выбора источника сигнала (HDMI 1/2/3/TV) с открытием меню слева
                 FilledTonalIconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -764,6 +748,34 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Default.Input, contentDescription = "Источник сигнала (HDMI)", tint = colors.secondary)
                 }
+
+                // Отцентрированный блок управления громкостью
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_DOWN) },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text("VOL -", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    IconButton(onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_MUTE) }) {
+                        Icon(Icons.Default.VolumeOff, contentDescription = "Mute", tint = colors.textPrimary)
+                    }
+                    FilledTonalButton(
+                        onClick = { pressKey(RemoteKeyCode.KEYCODE_VOLUME_UP) },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text("VOL +", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+
+                // Кнопка выхода из приложения справа
                 IconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
