@@ -665,7 +665,8 @@ class HomeViewModel(
             val isLg = _uiState.value.isLgMode
             val isSamsung = _uiState.value.isSamsungMode
             val targetIp = _uiState.value.selectedDeviceIp
-            Logger.log("HomeViewModel.sendKey: старт отправки ${keyCode.name} (mode=${when { isLg -> "LG" isSamsung -> "Samsung" else -> "AndroidTV" }}, ip=$targetIp)")
+            val modeName = if (isLg) "LG" else if (isSamsung) "Samsung" else "AndroidTV"
+            Logger.log("HomeViewModel.sendKey: старт отправки ${keyCode.name} (mode=$modeName, ip=$targetIp)")
 
             if (isLg) {
                 if (!lgWebOsConnectionManager.isConnected.value) {
