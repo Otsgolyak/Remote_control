@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -261,8 +262,10 @@ fun SettingsScreen(
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, colors.success.copy(alpha = 0.35f))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (!isPremium) Modifier.alpha(0.6f) else Modifier),
+                border = BorderStroke(1.dp, if (isPremium) colors.success.copy(alpha = 0.35f) else colors.cardBorder)
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -280,7 +283,7 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.Security,
                                 contentDescription = null,
-                                tint = colors.success,
+                                tint = if (isPremium) colors.success else colors.textSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
@@ -289,6 +292,33 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp
                             )
+                        }
+
+                        if (!isPremium) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        "Доступно в Premium подписке",
+                                        color = Color(0xFFFFB300),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -307,8 +337,12 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            enabled = isConnected && !isCleaningTv,
+                            enabled = isPremium && isConnected && !isCleaningTv,
                             onClick = {
+                                if (!isPremium) {
+                                    Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
                                 if (deviceIp != null) {
                                     isCleaningTv = true
                                     Toast.makeText(context, "Подключение к ТВ по ADB и очистка...", Toast.LENGTH_SHORT).show()
@@ -321,7 +355,7 @@ fun SettingsScreen(
                             },
                             modifier = Modifier.weight(1.3f),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.success)
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isPremium) colors.success else colors.actionButton)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -335,15 +369,15 @@ fun SettingsScreen(
                                     )
                                 } else {
                                     Icon(
-                                        Icons.Default.CleaningServices,
+                                        if (isPremium) Icons.Default.CleaningServices else Icons.Default.Lock,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = if (isPremium) Color.White else colors.actionButtonText,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
                                 Text(
                                     if (isCleaningTv) "Очистка..." else "Очистить ТВ",
-                                    color = Color.White,
+                                    color = if (isPremium) Color.White else colors.actionButtonText,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
@@ -351,8 +385,12 @@ fun SettingsScreen(
                         }
 
                         OutlinedButton(
-                            enabled = isConnected && !isCleaningTv,
+                            enabled = isPremium && isConnected && !isCleaningTv,
                             onClick = {
+                                if (!isPremium) {
+                                    Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
+                                    return@OutlinedButton
+                                }
                                 if (deviceIp != null) {
                                     isCleaningTv = true
                                     Toast.makeText(context, "Восстановление настроек ТВ...", Toast.LENGTH_SHORT).show()
@@ -376,7 +414,13 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (!isConnected) {
+                    if (!isPremium) {
+                        Text(
+                            "Доступно в Premium подписке. Активируйте промокод выше.",
+                            color = Color(0xFFFFB300),
+                            fontSize = 11.sp
+                        )
+                    } else if (!isConnected) {
                         Text(
                             if (state.isSamsungMode) "Очистка по ADB доступна только для Android TV"
                             else "Подключитесь к Android TV для выполнения очистки",

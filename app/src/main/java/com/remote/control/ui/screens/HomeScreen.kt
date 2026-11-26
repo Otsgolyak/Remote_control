@@ -28,6 +28,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -376,6 +377,14 @@ fun HomeScreen(
             }
 
             // 2. Mode Switcher Tabs
+            val isPremium = subscriptionTier.equals("Premium", ignoreCase = true)
+
+            LaunchedEffect(isPremium) {
+                if (!isPremium && (selectedTab == 1 || selectedTab == 2)) {
+                    selectedTab = 0
+                }
+            }
+
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = colors.cardBackground,
@@ -385,16 +394,45 @@ fun HomeScreen(
                     .border(1.dp, colors.cardBorder, RoundedCornerShape(12.dp))
             ) {
                 tabs.forEachIndexed { index, title ->
+                    val isLocked = !isPremium && (index == 1 || index == 2)
                     Tab(
                         selected = selectedTab == index,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (selectedTab == 1 && index != 1 && state.isGyroEnabled) {
-                                homeViewModel.setGyroEnabled(false)
+                            if (isLocked) {
+                                Toast.makeText(
+                                    context,
+                                    "Для использования этой функции приобретите премиум",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                if (selectedTab == 1 && index != 1 && state.isGyroEnabled) {
+                                    homeViewModel.setGyroEnabled(false)
+                                }
+                                selectedTab = index
                             }
-                            selectedTab = index
                         },
-                        text = { Text(title, color = if (selectedTab == index) colors.primary else colors.textSecondary, fontSize = 13.sp) }
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = if (isLocked) Modifier.alpha(0.5f) else Modifier
+                            ) {
+                                Text(
+                                    title,
+                                    color = if (selectedTab == index) colors.primary else colors.textSecondary,
+                                    fontSize = 13.sp
+                                )
+                                if (isLocked) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = "Премиум",
+                                        tint = colors.textSecondary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
                     )
                 }
             }
