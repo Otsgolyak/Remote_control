@@ -27,6 +27,8 @@ import androidx.navigation.compose.rememberNavController
 import com.remote.control.data.ConnectionManagerImpl
 import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.DeviceRepository
+import com.remote.control.data.lg.LgScanner
+import com.remote.control.data.lg.LgWebOsConnectionManager
 import com.remote.control.data.samsung.SamsungConnectionManager
 import com.remote.control.data.samsung.SamsungScanner
 import com.remote.control.data.update.UpdateRepositoryImpl
@@ -92,6 +94,8 @@ fun AppRoot() {
     val airMouseController = remember { AirMouseController(context) }
     val samsungConnectionManager = remember { SamsungConnectionManager(context) }
     val samsungScanner = remember { SamsungScanner(context) }
+    val lgWebOsConnectionManager = remember { LgWebOsConnectionManager(context) }
+    val lgScanner = remember { LgScanner(context) }
     val viewModelFactory = remember {
         HomeViewModelFactory(
             repository,
@@ -100,7 +104,9 @@ fun AppRoot() {
             nsdScanner,
             airMouseController,
             samsungConnectionManager,
-            samsungScanner
+            samsungScanner,
+            lgWebOsConnectionManager,
+            lgScanner
         )
     }
     val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)

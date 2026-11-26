@@ -7,6 +7,9 @@ import com.remote.control.data.bluetooth.AirMouseController
 import com.remote.control.data.device.CustomShortcutData
 import com.remote.control.data.device.Device
 import com.remote.control.data.device.DeviceRepository
+import com.remote.control.data.lg.LgAppInfo
+import com.remote.control.data.lg.LgScanner
+import com.remote.control.data.lg.LgWebOsConnectionManager
 import com.remote.control.data.samsung.SamsungConnectionManager
 import com.remote.control.data.samsung.SamsungScanner
 import com.remote.control.data.wifi.DiscoveredTv
@@ -51,6 +54,7 @@ data class RemoteState(
     val isConnected: Boolean = false,
     val isConnecting: Boolean = false,
     val isSamsungMode: Boolean = false,
+    val isLgMode: Boolean = false,
     val status: String = "Не подключено",
     val selectedDeviceName: String = "Xiaomi TV",
     val selectedDeviceIp: String? = null,
@@ -82,7 +86,9 @@ class HomeViewModel(
     private val nsdScanner: NsdScanner,
     private val airMouseController: AirMouseController,
     private val samsungConnectionManager: SamsungConnectionManager,
-    private val samsungScanner: SamsungScanner
+    private val samsungScanner: SamsungScanner,
+    private val lgWebOsConnectionManager: LgWebOsConnectionManager,
+    private val lgScanner: LgScanner
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RemoteState())
@@ -145,19 +151,32 @@ class HomeViewModel(
             val newX = (current.first + dx * 0.4f).coerceIn(-120f, 120f)
             val newY = (current.second + dy * 0.4f).coerceIn(-65f, 65f)
             _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
+            if (_uiState.value.isLgMode && lgWebOsConnectionManager.isConnected.value) {
+                lgWebOsConnectionManager.sendPointerMove(dx, dy)
+            }
         }
 
         viewModelScope.launch {
             combine(
                 connectionManager.isConnected,
-                samsungConnectionManager.isConnected
-            ) { atvConn, samConn ->
-                Pair(atvConn, samConn)
-            }.collect { (atvConn, samConn) ->
+                samsungConnectionManager.isConnected,
+                lgWebOsConnectionManager.isConnected
+            ) { atvConn, samConn, lgConn ->
+                Triple(atvConn, samConn, lgConn)
+            }.collect { (atvConn, samConn, lgConn) ->
                 val isSam = _uiState.value.isSamsungMode
-                val connected = if (isSam) samConn else atvConn
+                val isLg = _uiState.value.isLgMode
+                val connected = when {
+                    isLg -> lgConn
+                    isSam -> samConn
+                    else -> atvConn
+                }
                 val ip = _uiState.value.selectedDeviceIp
-                val prefix = if (isSam) "Samsung Tizen" else "Android TV"
+                val prefix = when {
+                    isLg -> "LG webOS"
+                    isSam -> "Samsung Tizen"
+                    else -> "Android TV"
+                }
                 _uiState.value = _uiState.value.copy(
                     isConnected = connected,
                     status = when {
@@ -260,7 +279,11 @@ class HomeViewModel(
         val newX = (current.first + dx * 0.35f * sensitivity).coerceIn(-120f, 120f)
         val newY = (current.second + dy * 0.35f * sensitivity).coerceIn(-65f, 65f)
         _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
-        airMouseController.sendMouseDelta(dx, dy)
+        if (_uiState.value.isLgMode) {
+            lgWebOsConnectionManager.sendPointerMove(dx * sensitivity, dy * sensitivity)
+        } else {
+            airMouseController.sendMouseDelta(dx, dy)
+        }
     }
 
     fun startDiscovery() {
@@ -270,8 +293,9 @@ class HomeViewModel(
             try {
                 combine(
                     nsdScanner.discover(),
-                    samsungScanner.discoverSamsungTvs()
-                ) { nsdList, samsungList ->
+                    samsungScanner.discoverSamsungTvs(),
+                    lgScanner.discoverLgTvs()
+                ) { nsdList, samsungList, lgList ->
                     val mergedMap = LinkedHashMap<String, DiscoveredTv>()
 
                     for (tv in nsdList) {
@@ -292,6 +316,20 @@ class HomeViewModel(
                         )
                     }
 
+                    for (lg in lgList) {
+                        val existing = mergedMap[lg.ip]
+                        val displayName = when {
+                            lg.name.isNotBlank() && !lg.name.equals("LG webOS Smart TV", ignoreCase = true) -> lg.name
+                            existing != null && existing.name.isNotBlank() -> existing.name
+                            else -> "LG webOS Smart TV"
+                        }
+                        mergedMap[lg.ip] = DiscoveredTv(
+                            name = displayName,
+                            ip = lg.ip,
+                            port = lg.port
+                        )
+                    }
+
                     mergedMap.values.toList()
                 }.collect { combinedList ->
                     _uiState.value = _uiState.value.copy(
@@ -306,14 +344,41 @@ class HomeViewModel(
         }
     }
 
+    fun connectToLgTv(name: String, ip: String, onConnected: () -> Unit = {}) {
+        val cleanIp = ip.trim()
+        if (cleanIp.isEmpty()) return
+        val devName = name.ifBlank { "LG webOS TV ($cleanIp)" }
+        viewModelScope.launch {
+            repository.addDevice(Device(cleanIp, devName, isSamsung = false, isLg = true))
+            _uiState.value = _uiState.value.copy(
+                isSamsungMode = false,
+                isLgMode = true,
+                selectedDeviceIp = cleanIp,
+                selectedDeviceName = devName,
+                isConnecting = true,
+                pairingError = null,
+                status = "Подключение к LG webOS $cleanIp..."
+            )
+            repository.setSelectedDevice(cleanIp)
+            connectionManager.disconnect()
+            samsungConnectionManager.disconnect()
+            Logger.log("Запуск подключения к LG webOS TV ($cleanIp) по WebSocket...")
+            lgWebOsConnectionManager.connect(cleanIp)
+            delay(500)
+            _uiState.value = _uiState.value.copy(isConnecting = false)
+            onConnected()
+        }
+    }
+
     fun connectToSamsungTv(name: String, ip: String, onConnected: () -> Unit = {}) {
         val cleanIp = ip.trim()
         if (cleanIp.isEmpty()) return
         val devName = name.ifBlank { "Samsung TV ($cleanIp)" }
         viewModelScope.launch {
-            repository.addDevice(Device(cleanIp, devName, isSamsung = true))
+            repository.addDevice(Device(cleanIp, devName, isSamsung = true, isLg = false))
             _uiState.value = _uiState.value.copy(
                 isSamsungMode = true,
+                isLgMode = false,
                 selectedDeviceIp = cleanIp,
                 selectedDeviceName = devName,
                 isConnecting = true,
@@ -322,6 +387,7 @@ class HomeViewModel(
             )
             repository.setSelectedDevice(cleanIp)
             connectionManager.disconnect()
+            lgWebOsConnectionManager.disconnect()
             Logger.log("Запуск подключения к Samsung TV ($cleanIp) по WebSocket...")
             samsungConnectionManager.connect(cleanIp)
             delay(500)
@@ -341,6 +407,7 @@ class HomeViewModel(
                 selectedDeviceName = device.name,
                 selectedDeviceIp = device.ip,
                 isSamsungMode = device.isSamsung,
+                isLgMode = device.isLg,
                 isConnecting = true,
                 pairingError = null,
                 status = "Подключение к ${device.ip}..."
@@ -348,8 +415,19 @@ class HomeViewModel(
             repository.setSelectedDevice(device.ip)
 
             try {
+                if (device.isLg) {
+                    connectionManager.disconnect()
+                    samsungConnectionManager.disconnect()
+                    lgWebOsConnectionManager.connect(device.ip)
+                    delay(500)
+                    _uiState.value = _uiState.value.copy(isConnecting = false)
+                    onConnected()
+                    return@launch
+                }
+
                 if (device.isSamsung) {
                     connectionManager.disconnect()
+                    lgWebOsConnectionManager.disconnect()
                     samsungConnectionManager.connect(device.ip)
                     delay(500)
                     _uiState.value = _uiState.value.copy(isConnecting = false)
@@ -358,6 +436,7 @@ class HomeViewModel(
                 }
 
                 samsungConnectionManager.disconnect()
+                lgWebOsConnectionManager.disconnect()
 
                 try {
                     connectionManager.connect(device.ip, 6466)
@@ -416,6 +495,7 @@ class HomeViewModel(
             _uiState.value = _uiState.value.copy(
                 isConnecting = true,
                 isSamsungMode = false,
+                isLgMode = false,
                 pairingError = null,
                 pendingPairingName = name.ifBlank { "Xiaomi TV ($cleanIp)" },
                 pendingPairingIp = cleanIp,
@@ -455,13 +535,14 @@ class HomeViewModel(
             val result = pairingRepository.confirmPin(pin)
             result.fold(
                 onSuccess = {
-                    val device = Device(ip = ip, name = name, isSamsung = false)
+                    val device = Device(ip = ip, name = name, isSamsung = false, isLg = false)
                     repository.addDevice(device)
                     _uiState.value = _uiState.value.copy(
                         isPairingPinRequired = false,
                         selectedDeviceIp = ip,
                         selectedDeviceName = name,
                         isSamsungMode = false,
+                        isLgMode = false,
                         status = "Сопряжено! Подключение..."
                     )
                     delay(300)
@@ -503,9 +584,12 @@ class HomeViewModel(
             repository.toggleDeviceType(ip)
             val updated = repository.pairedDevices.firstOrNull()?.find { it.ip == ip }
             if (updated != null && _uiState.value.selectedDeviceIp == ip) {
-                _uiState.value = _uiState.value.copy(isSamsungMode = updated.isSamsung)
+                _uiState.value = _uiState.value.copy(
+                    isSamsungMode = updated.isSamsung,
+                    isLgMode = updated.isLg
+                )
             }
-            Logger.log("Переключен тип устройства ($ip), новый режим Samsung: ${updated?.isSamsung}")
+            Logger.log("Переключен тип устройства ($ip), Samsung=${updated?.isSamsung}, LG=${updated?.isLg}")
         }
     }
 
@@ -515,6 +599,7 @@ class HomeViewModel(
             if (_uiState.value.selectedDeviceIp == ip) {
                 connectionManager.disconnect()
                 samsungConnectionManager.disconnect()
+                lgWebOsConnectionManager.disconnect()
                 _uiState.value = _uiState.value.copy(
                     selectedDeviceIp = null,
                     selectedDeviceName = "Xiaomi TV",
@@ -558,7 +643,11 @@ class HomeViewModel(
 
     fun sendGyroKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
-            if (_uiState.value.isSamsungMode) {
+            if (_uiState.value.isLgMode) {
+                if (lgWebOsConnectionManager.isConnected.value) {
+                    lgWebOsConnectionManager.sendKey(keyCode)
+                }
+            } else if (_uiState.value.isSamsungMode) {
                 if (samsungConnectionManager.isConnected.value) {
                     samsungConnectionManager.sendKey(keyCode)
                 }
@@ -573,9 +662,28 @@ class HomeViewModel(
     fun sendKey(keyCode: RemoteKeyCode) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val isLg = _uiState.value.isLgMode
             val isSamsung = _uiState.value.isSamsungMode
             val targetIp = _uiState.value.selectedDeviceIp
-            Logger.log("HomeViewModel.sendKey: старт отправки ${keyCode.name} (mode=${if (isSamsung) "Samsung" else "AndroidTV"}, ip=$targetIp)")
+            Logger.log("HomeViewModel.sendKey: старт отправки ${keyCode.name} (mode=${when { isLg -> "LG" isSamsung -> "Samsung" else -> "AndroidTV" }}, ip=$targetIp)")
+
+            if (isLg) {
+                if (!lgWebOsConnectionManager.isConnected.value) {
+                    val ip = targetIp ?: run {
+                        Logger.log("HomeViewModel.sendKey: отмена, IP LG ТВ не выбран")
+                        return@launch
+                    }
+                    if (now - lastReconnectAttemptTimeMs >= 5000L) {
+                        lastReconnectAttemptTimeMs = now
+                        Logger.log("Переподключение к LG webOS TV ($ip) перед отправкой ${keyCode.name}...")
+                        lgWebOsConnectionManager.connect(ip)
+                        delay(300)
+                    }
+                }
+                Logger.log("LG webOS sendKey: ${keyCode.name} -> отправка через WebSocket")
+                lgWebOsConnectionManager.sendKey(keyCode)
+                return@launch
+            }
 
             if (isSamsung) {
                 if (!samsungConnectionManager.isConnected.value) {
@@ -626,6 +734,10 @@ class HomeViewModel(
     fun sendText(text: String) {
         if (text.isEmpty()) return
         viewModelScope.launch {
+            if (_uiState.value.isLgMode) {
+                lgWebOsConnectionManager.sendText(text)
+                return@launch
+            }
             if (_uiState.value.isSamsungMode) {
                 samsungConnectionManager.sendText(text)
                 return@launch
@@ -647,6 +759,10 @@ class HomeViewModel(
     fun sendTextAsKeys(text: String) {
         if (text.isEmpty()) return
         viewModelScope.launch {
+            if (_uiState.value.isLgMode) {
+                lgWebOsConnectionManager.sendText(text)
+                return@launch
+            }
             if (_uiState.value.isSamsungMode) {
                 samsungConnectionManager.sendText(text)
                 return@launch
@@ -728,12 +844,29 @@ class HomeViewModel(
     }
 
     fun onTouchpadMove(dx: Float, dy: Float) {
-        airMouseController.sendMouseDelta(dx, dy)
+        if (_uiState.value.isLgMode) {
+            val sensitivity = _uiState.value.mouseSensitivity
+            val scaledDx = dx * sensitivity
+            val scaledDy = dy * sensitivity
+            val current = _uiState.value.cursorPosition
+            val newX = (current.first + scaledDx * 0.35f).coerceIn(-120f, 120f)
+            val newY = (current.second + scaledDy * 0.35f).coerceIn(-65f, 65f)
+            _uiState.value = _uiState.value.copy(cursorPosition = Pair(newX, newY))
+            lgWebOsConnectionManager.sendPointerMove(scaledDx, scaledDy)
+        } else {
+            airMouseController.sendMouseDelta(dx, dy)
+        }
     }
 
     fun onMouseClick(left: Boolean) {
-        Logger.log("AirMouse клик: left=$left, btConnected=${airMouseController.isBtConnected.value}")
-        if (airMouseController.isBtConnected.value) {
+        Logger.log("AirMouse клик: left=$left, isLgMode=${_uiState.value.isLgMode}, btConnected=${airMouseController.isBtConnected.value}")
+        if (_uiState.value.isLgMode) {
+            if (left) {
+                lgWebOsConnectionManager.sendPointerClick()
+            } else {
+                lgWebOsConnectionManager.sendPointerButton("BACK")
+            }
+        } else if (airMouseController.isBtConnected.value) {
             airMouseController.sendClick(left)
         } else {
             sendKey(if (left) RemoteKeyCode.KEYCODE_DPAD_CENTER else RemoteKeyCode.KEYCODE_BACK)
@@ -741,7 +874,9 @@ class HomeViewModel(
     }
 
     fun onMouseScroll(wheel: Int) {
-        if (airMouseController.isBtConnected.value) {
+        if (_uiState.value.isLgMode) {
+            lgWebOsConnectionManager.sendPointerScroll(-wheel * 15)
+        } else if (airMouseController.isBtConnected.value) {
             airMouseController.sendMouseDelta(0f, 0f, wheel = wheel)
         } else {
             sendKey(if (wheel > 0) RemoteKeyCode.KEYCODE_DPAD_UP else RemoteKeyCode.KEYCODE_DPAD_DOWN)
@@ -783,6 +918,10 @@ class HomeViewModel(
 
     fun launchShortcut(shortcut: AppShortcut, context: android.content.Context? = null) {
         viewModelScope.launch {
+            if (_uiState.value.isLgMode) {
+                lgWebOsConnectionManager.launchApp(shortcut.title)
+                return@launch
+            }
             if (_uiState.value.isSamsungMode) {
                 samsungConnectionManager.launchApp(shortcut.title)
                 return@launch

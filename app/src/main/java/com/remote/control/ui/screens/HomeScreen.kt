@@ -531,38 +531,64 @@ fun HomeScreen(
                                 Text("Гироскоп", color = colors.textPrimary, fontSize = 13.sp)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Button(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            btPermissionLauncher.launch(
-                                                arrayOf(
-                                                    Manifest.permission.BLUETOOTH_CONNECT,
-                                                    Manifest.permission.BLUETOOTH_ADVERTISE,
-                                                    Manifest.permission.BLUETOOTH_SCAN
-                                                )
+                                if (state.isLgMode) {
+                                    Surface(
+                                        color = Color(0xFFA50034).copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AdsClick,
+                                                contentDescription = null,
+                                                tint = Color(0xFFE50914),
+                                                modifier = Modifier.size(14.dp)
                                             )
-                                        } else {
-                                            homeViewModel.autoConnectBluetoothMouse()
+                                            Text(
+                                                "Magic Remote (Wi-Fi)",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFE50914),
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (state.isBtMouseConnected) colors.success.copy(alpha = 0.2f) else colors.actionButton
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Mouse,
-                                        contentDescription = null,
-                                        tint = if (state.isBtMouseConnected) colors.success else colors.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        if (state.isBtMouseConnected) "BT Курсор: ВКЛ" else "BT Мышь",
-                                        fontSize = 11.sp,
-                                        color = if (state.isBtMouseConnected) colors.success else colors.actionButtonText
-                                    )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                btPermissionLauncher.launch(
+                                                    arrayOf(
+                                                        Manifest.permission.BLUETOOTH_CONNECT,
+                                                        Manifest.permission.BLUETOOTH_ADVERTISE,
+                                                        Manifest.permission.BLUETOOTH_SCAN
+                                                    )
+                                                )
+                                            } else {
+                                                homeViewModel.autoConnectBluetoothMouse()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (state.isBtMouseConnected) colors.success.copy(alpha = 0.2f) else colors.actionButton
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Mouse,
+                                            contentDescription = null,
+                                            tint = if (state.isBtMouseConnected) colors.success else colors.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            if (state.isBtMouseConnected) "BT Курсор: ВКЛ" else "BT Мышь",
+                                            fontSize = 11.sp,
+                                            color = if (state.isBtMouseConnected) colors.success else colors.actionButtonText
+                                        )
+                                    }
                                 }
                             }
                         }

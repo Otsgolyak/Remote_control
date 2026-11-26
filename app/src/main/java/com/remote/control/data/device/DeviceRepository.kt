@@ -12,8 +12,19 @@ import kotlinx.serialization.json.Json
 
 private val Context.dataStore by preferencesDataStore(name = "devices")
 
+private val jsonConfig = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+    encodeDefaults = true
+}
+
 @Serializable
-data class Device(val ip: String, val name: String, val isSamsung: Boolean = false)
+data class Device(
+    val ip: String,
+    val name: String,
+    val isSamsung: Boolean = false,
+    val isLg: Boolean = false
+)
 
 @Serializable
 data class CustomShortcutData(
@@ -52,7 +63,7 @@ class DeviceRepository(private val context: Context) {
     val pairedDevices: Flow<List<Device>> = context.dataStore.data.map { preferences ->
         val json = preferences[DEVICES_KEY] ?: "[]"
         try {
-            Json.decodeFromString<List<Device>>(json)
+            jsonConfig.decodeFromString<List<Device>>(json)
         } catch (e: Exception) {
             emptyList()
         }
@@ -65,7 +76,7 @@ class DeviceRepository(private val context: Context) {
     val customShortcuts: Flow<List<CustomShortcutData>> = context.dataStore.data.map { preferences ->
         val json = preferences[SHORTCUTS_KEY] ?: "[]"
         try {
-            Json.decodeFromString<List<CustomShortcutData>>(json)
+            jsonConfig.decodeFromString<List<CustomShortcutData>>(json)
         } catch (e: Exception) {
             emptyList()
         }
@@ -75,7 +86,7 @@ class DeviceRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             val json = preferences[DEVICES_KEY] ?: "[]"
             val currentList = try {
-                Json.decodeFromString<List<Device>>(json).toMutableList()
+                jsonConfig.decodeFromString<List<Device>>(json).toMutableList()
             } catch (e: Exception) {
                 mutableListOf()
             }
@@ -85,7 +96,7 @@ class DeviceRepository(private val context: Context) {
             } else {
                 currentList.add(device)
             }
-            preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+            preferences[DEVICES_KEY] = jsonConfig.encodeToString(currentList)
             preferences[SELECTED_IP_KEY] = device.ip
         }
     }
@@ -96,14 +107,14 @@ class DeviceRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             val json = preferences[DEVICES_KEY] ?: "[]"
             val currentList = try {
-                Json.decodeFromString<List<Device>>(json).toMutableList()
+                jsonConfig.decodeFromString<List<Device>>(json).toMutableList()
             } catch (e: Exception) {
                 mutableListOf()
             }
             val idx = currentList.indexOfFirst { it.ip == ip }
             if (idx >= 0) {
                 currentList[idx] = currentList[idx].copy(name = cleanName)
-                preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+                preferences[DEVICES_KEY] = jsonConfig.encodeToString(currentList)
             }
         }
     }
@@ -112,15 +123,20 @@ class DeviceRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             val json = preferences[DEVICES_KEY] ?: "[]"
             val currentList = try {
-                Json.decodeFromString<List<Device>>(json).toMutableList()
+                jsonConfig.decodeFromString<List<Device>>(json).toMutableList()
             } catch (e: Exception) {
                 mutableListOf()
             }
             val idx = currentList.indexOfFirst { it.ip == ip }
             if (idx >= 0) {
                 val currentDevice = currentList[idx]
-                currentList[idx] = currentDevice.copy(isSamsung = !currentDevice.isSamsung)
-                preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+                val nextDevice = when {
+                    !currentDevice.isSamsung && !currentDevice.isLg -> currentDevice.copy(isSamsung = true, isLg = false)
+                    currentDevice.isSamsung -> currentDevice.copy(isSamsung = false, isLg = true)
+                    else -> currentDevice.copy(isSamsung = false, isLg = false)
+                }
+                currentList[idx] = nextDevice
+                preferences[DEVICES_KEY] = jsonConfig.encodeToString(currentList)
             }
         }
     }
@@ -129,12 +145,12 @@ class DeviceRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             val json = preferences[DEVICES_KEY] ?: "[]"
             val currentList = try {
-                Json.decodeFromString<List<Device>>(json).toMutableList()
+                jsonConfig.decodeFromString<List<Device>>(json).toMutableList()
             } catch (e: Exception) {
                 mutableListOf()
             }
             currentList.removeAll { it.ip == ip }
-            preferences[DEVICES_KEY] = Json.encodeToString(currentList)
+            preferences[DEVICES_KEY] = jsonConfig.encodeToString(currentList)
             if (preferences[SELECTED_IP_KEY] == ip) {
                 val nextIp = currentList.firstOrNull()?.ip
                 if (nextIp != null) {

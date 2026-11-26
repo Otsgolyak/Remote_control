@@ -188,8 +188,24 @@ fun PairingScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
 
                                         // Clickable mode toggle badge
+                                        val badgeColor = when {
+                                            device.isLg -> Color(0xFFA50034).copy(alpha = 0.15f)
+                                            device.isSamsung -> Color(0xFF007AFF).copy(alpha = 0.15f)
+                                            else -> colors.primary.copy(alpha = 0.15f)
+                                        }
+                                        val badgeTextColor = when {
+                                            device.isLg -> Color(0xFFE50914)
+                                            device.isSamsung -> Color(0xFF2979FF)
+                                            else -> colors.primary
+                                        }
+                                        val badgeText = when {
+                                            device.isLg -> "LG webOS"
+                                            device.isSamsung -> "Samsung"
+                                            else -> "Android TV"
+                                        }
+
                                         Surface(
-                                            color = if (device.isSamsung) Color(0xFF007AFF).copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.15f),
+                                            color = badgeColor,
                                             shape = RoundedCornerShape(6.dp),
                                             modifier = Modifier.clickable {
                                                 homeViewModel.toggleDeviceType(device.ip)
@@ -201,15 +217,15 @@ fun PairingScreen(
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             ) {
                                                 Text(
-                                                    text = if (device.isSamsung) "Samsung" else "Android TV",
-                                                    color = if (device.isSamsung) Color(0xFF2979FF) else colors.primary,
+                                                    text = badgeText,
+                                                    color = badgeTextColor,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Icon(
                                                     Icons.Default.SwapHoriz,
                                                     contentDescription = "Сменить режим",
-                                                    tint = if (device.isSamsung) Color(0xFF2979FF) else colors.primary,
+                                                    tint = badgeTextColor,
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                             }
@@ -288,7 +304,7 @@ fun PairingScreen(
                                     }
 
                                     // PIN Re-pair button (for Android TV)
-                                    if (!device.isSamsung) {
+                                    if (!device.isSamsung && !device.isLg) {
                                         Surface(
                                             color = colors.secondary.copy(alpha = 0.15f),
                                             shape = RoundedCornerShape(6.dp),
@@ -371,14 +387,46 @@ fun PairingScreen(
                 }
             } else {
                 items(state.discoveredDevices) { tv ->
-                    val isSamsungTv = tv.port == 8001 || tv.port == 8002 || tv.name.contains("Samsung", ignoreCase = true) || tv.name.contains("Tizen", ignoreCase = true)
+                    val isLgTv = tv.port == 3001 || tv.port == 3000 || tv.name.contains("LG", ignoreCase = true) || tv.name.contains("webOS", ignoreCase = true)
+                    val isSamsungTv = !isLgTv && (tv.port == 8001 || tv.port == 8002 || tv.name.contains("Samsung", ignoreCase = true) || tv.name.contains("Tizen", ignoreCase = true))
+
+                    val tvBorderColor = when {
+                        isLgTv -> Color(0xFFA50034)
+                        isSamsungTv -> Color(0xFF2979FF)
+                        else -> colors.primary
+                    }
+                    val tvBadgeBg = when {
+                        isLgTv -> Color(0xFFA50034).copy(alpha = 0.15f)
+                        isSamsungTv -> Color(0xFF007AFF).copy(alpha = 0.15f)
+                        else -> colors.primary.copy(alpha = 0.15f)
+                    }
+                    val tvBadgeTextColor = when {
+                        isLgTv -> Color(0xFFE50914)
+                        isSamsungTv -> Color(0xFF2979FF)
+                        else -> colors.primary
+                    }
+                    val tvBadgeText = when {
+                        isLgTv -> "LG webOS"
+                        isSamsungTv -> "Samsung Tizen"
+                        else -> "Android TV"
+                    }
+                    val tvBtnColor = when {
+                        isLgTv -> Color(0xFFA50034)
+                        isSamsungTv -> Color(0xFF007AFF)
+                        else -> colors.secondary
+                    }
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, if (isSamsungTv) Color(0xFF2979FF) else colors.primary, RoundedCornerShape(12.dp))
+                            .border(1.dp, tvBorderColor, RoundedCornerShape(12.dp))
                             .clickable {
-                                if (isSamsungTv) {
+                                if (isLgTv) {
+                                    homeViewModel.connectToLgTv(tv.name, tv.ip) {
+                                        onNavigateToHome()
+                                    }
+                                } else if (isSamsungTv) {
                                     homeViewModel.connectToSamsungTv(tv.name, tv.ip) {
                                         onNavigateToHome()
                                     }
@@ -406,7 +454,7 @@ fun PairingScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, tint = if (isSamsungTv) Color(0xFF2979FF) else colors.primary)
+                                Icon(Icons.Default.Wifi, contentDescription = null, tint = tvBorderColor)
                                 Column {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -422,12 +470,12 @@ fun PairingScreen(
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                         Surface(
-                                            color = if (isSamsungTv) Color(0xFF007AFF).copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.15f),
+                                            color = tvBadgeBg,
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
-                                                text = if (isSamsungTv) "Samsung Tizen" else "Android TV",
-                                                color = if (isSamsungTv) Color(0xFF2979FF) else colors.primary,
+                                                text = tvBadgeText,
+                                                color = tvBadgeTextColor,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -439,7 +487,11 @@ fun PairingScreen(
                             }
                             Button(
                                 onClick = {
-                                    if (isSamsungTv) {
+                                    if (isLgTv) {
+                                        homeViewModel.connectToLgTv(tv.name, tv.ip) {
+                                            onNavigateToHome()
+                                        }
+                                    } else if (isSamsungTv) {
                                         homeViewModel.connectToSamsungTv(tv.name, tv.ip) {
                                             onNavigateToHome()
                                         }
@@ -454,7 +506,7 @@ fun PairingScreen(
                                         }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isSamsungTv) Color(0xFF007AFF) else colors.secondary)
+                                colors = ButtonDefaults.buttonColors(containerColor = tvBtnColor)
                             ) {
                                 Text("Подключить", color = Color.White)
                             }
@@ -570,6 +622,34 @@ fun PairingScreen(
                                         fontSize = 10.sp
                                     )
                                 }
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                if (manualIp.isNotBlank()) {
+                                    homeViewModel.connectToLgTv(manualName.ifBlank { "LG webOS TV" }, manualIp) {
+                                        onNavigateToHome()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA50034)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 10.dp, horizontal = 12.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "Подключить как LG Smart TV (webOS)",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "Запрос «Разрешить» на экране ТВ",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                         Button(
