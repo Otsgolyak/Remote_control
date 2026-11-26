@@ -7,9 +7,11 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -48,7 +50,7 @@ import com.remote.control.utils.Logger
 import kotlinx.coroutines.launch
 import remote.RemoteKeyCode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     homeViewModel: HomeViewModel,
@@ -565,7 +567,7 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                             ) {
-                                Text("ЛКМ (OK)", color = colors.actionButtonText, fontSize = 12.sp)
+                                Text("ОК", color = colors.actionButtonText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -586,12 +588,12 @@ fun HomeScreen(
                             Button(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    homeViewModel.onMouseClick(left = false)
+                                    homeViewModel.onMouseClick(left = true)
                                 },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.actionButton)
                             ) {
-                                Text("ПКМ", color = colors.actionButtonText, fontSize = 12.sp)
+                                Text("ОК", color = colors.actionButtonText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -724,16 +726,30 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Явная кнопка "Назад" с понятной подписью
-                    FilledTonalButton(
-                        onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
+                    // Явная кнопка "Назад" с понятной подписью (долгое нажатие = ПКМ / контекстное меню)
+                    Surface(
                         shape = RoundedCornerShape(16.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        color = colors.actionButton,
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .combinedClickable(
+                                onClick = { pressKey(RemoteKeyCode.KEYCODE_BACK) },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    homeViewModel.onMouseClick(left = false)
+                                    Toast.makeText(context, "ПКМ (Меню)", Toast.LENGTH_SHORT).show()
+                                }
+                            )
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.primary)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Назад", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = colors.primary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Назад", color = colors.actionButtonText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
 
                     Box(
@@ -761,6 +777,7 @@ fun HomeScreen(
                         onClick = { pressKey(RemoteKeyCode.KEYCODE_HOME) },
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.actionButton),
                         shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.height(44.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Icon(Icons.Default.Home, contentDescription = "Домой", tint = colors.secondary)
