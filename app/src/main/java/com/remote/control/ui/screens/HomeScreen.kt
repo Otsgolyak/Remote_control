@@ -115,9 +115,16 @@ fun HomeScreen(
         val matches = result.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
         val spokenText = matches?.firstOrNull()
         if (!spokenText.isNullOrBlank()) {
-            keyboardText = spokenText
-            homeViewModel.sendText(spokenText)
-            Toast.makeText(context, "Отправлено на ТВ: $spokenText", Toast.LENGTH_SHORT).show()
+            if (selectedTab == 2) {
+                // На вкладке клавиатуры: не отправляем сразу на ТВ, а вписываем в поле ввода для проверки и редактирования
+                keyboardText = if (keyboardText.isBlank()) spokenText else "$keyboardText $spokenText"
+                Toast.makeText(context, "Текст добавлен в поле ввода", Toast.LENGTH_SHORT).show()
+            } else {
+                // На вкладках пульта или мыши: отправляем сразу на ТВ
+                keyboardText = spokenText
+                homeViewModel.sendText(spokenText)
+                Toast.makeText(context, "Отправлено на ТВ: $spokenText", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -610,58 +617,99 @@ fun HomeScreen(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 trailingIcon = {
-                                    if (keyboardText.isNotEmpty()) {
-                                        IconButton(onClick = { keyboardText = "" }) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { launchPhoneSpeechToText() }) {
+                                            Icon(Icons.Default.Mic, contentDescription = "Голосовой ввод", tint = colors.primary)
+                                        }
+                                        if (keyboardText.isNotEmpty()) {
+                                            IconButton(onClick = { keyboardText = "" }) {
+                                                Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                                            }
                                         }
                                     }
                                 }
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Button(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         homeViewModel.sendText(keyboardText)
                                     },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.secondary)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.secondary),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    Text("Вставить в поле ТВ", color = Color.White, fontSize = 12.sp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Text("Вставить на ТВ", color = Color.White, fontSize = 12.sp, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                                 OutlinedButton(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         homeViewModel.sendTextAsKeys(keyboardText)
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    Text("По буквам", fontSize = 12.sp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Keyboard, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Text("По буквам", fontSize = 12.sp, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedButton(
                                     onClick = { pressKey(RemoteKeyCode.KEYCODE_DEL) },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Text("⌫ Стереть")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Backspace, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Text("Стереть", fontSize = 12.sp, maxLines = 1)
+                                    }
                                 }
                                 OutlinedButton(
                                     onClick = { pressKey(RemoteKeyCode.KEYCODE_SPACE) },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Text("Пробел")
+                                    Text("Пробел", fontSize = 12.sp, maxLines = 1)
                                 }
                                 Button(
                                     onClick = { pressKey(RemoteKeyCode.KEYCODE_ENTER) },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Text("Enter ↵", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Enter ↵", color = if (colors.isDark) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                                 }
                             }
                         }
