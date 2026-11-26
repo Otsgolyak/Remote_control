@@ -1,11 +1,11 @@
 package com.remote.control.data.adb
 
 import android.content.Context
+import android.net.Uri
 import com.remote.control.utils.Logger
 import dadb.AdbKeyPair
 import dadb.Dadb
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,19 +63,46 @@ object AdbCleaner {
     )
 
     /**
-     * Комплексная очистка ТВ от рекламы, телеметрии, мусора + Установка и настройка MSX
+     * 1. Очистка системного кэша и временных файлов
      */
-    suspend fun cleanTv(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
+    suspend fun cleanCache(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
+        val details = mutableListOf<String>()
+        try {
+            Logger.log("AdbCleaner: очистка кэша на $host:$port...")
+            val keyPair = loadOrCreateKeyPair(context)
+            Dadb.create(host, port, keyPair).use { dadb ->
+                val trimResp = dadb.shell("pm trim-caches 1000M")
+                details.add("✅ Системный кэш приложений очищен (pm trim-caches)")
+                Logger.log("AdbCleaner: pm trim-caches -> ${trimResp.output.trim()}")
+
+                dadb.shell("rm -rf /data/local/tmp/*.apk /data/local/tmp/*.tmp")
+                details.add("✅ Каталог временных файлов /data/local/tmp очищен")
+
+                val summary = "Очистка кэша завершена! Кэш приложений и временные файлы освобождены."
+                Logger.log("AdbCleaner: $summary")
+                AdbCleanResult(true, summary, details)
+            }
+        } catch (e: Exception) {
+            val err = e.message ?: e.toString()
+            Logger.log("AdbCleaner cleanCache ошибка: $err")
+            AdbCleanResult(
+                false,
+                "Не удалось подключиться по ADB к ТВ ($host:$port). Проверьте 'Отладка по USB / Wi-Fi' на ТВ.",
+                listOf("Ошибка: $err")
+            )
+        }
+    }
+
+    /**
+     * 2. Блокировка рекламы, отключение рекламных трекеров и AdGuard DNS
+     */
+    suspend fun blockAds(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
         val details = mutableListOf<String>()
         var disabledCount = 0
-
         try {
-            Logger.log("AdbCleaner: подключение к $host:$port...")
+            Logger.log("AdbCleaner: блокировка рекламы на $host:$port...")
             val keyPair = loadOrCreateKeyPair(context)
-
             Dadb.create(host, port, keyPair).use { dadb ->
-                Logger.log("AdbCleaner: подключено к $host:$port. Применение AdGuard DNS...")
-
                 // 1. Установка AdGuard DNS over TLS (блокирует рекламу на уровне всей системы)
                 val dnsModeResp = dadb.shell("settings put global private_dns_mode hostname")
                 val dnsHostResp = dadb.shell("settings put global private_dns_specifier dns.adguard-dns.com")
@@ -91,7 +118,6 @@ object AdbCleaner {
                 dadb.shell("settings put secure advertising_id_opt_out 1")
                 dadb.shell("settings put global usage_reporting_enabled 0")
                 details.add("✅ Ограничение рекламного трекинга и телеметрии включено")
-                Logger.log("AdbCleaner: рекламный идентификатор отключен")
 
                 // 3. Отключение рекламных пакетов и аналитики
                 for ((pkg, desc) in BLOATWARE_PACKAGES) {
@@ -101,41 +127,53 @@ object AdbCleaner {
                         if (disableResp.exitCode == 0 || disableResp.output.contains("disabled")) {
                             disabledCount++
                             details.add("✅ Отключено: $desc ($pkg)")
-                            Logger.log("AdbCleaner: отключен $pkg ($desc)")
                         } else {
                             details.add("⚠️ Ошибка отключения $pkg: ${disableResp.output.trim()}")
                         }
                     }
                 }
 
-                // 4. Очистка кэша
-                val trimResp = dadb.shell("pm trim-caches 1000M")
-                details.add("✅ Очистка временного кэша и фонового мусора выполнена")
-                Logger.log("AdbCleaner: pm trim-caches -> ${trimResp.output.trim()}")
+                val summary = "Блокировка рекламы завершена! AdGuard DNS активен, отключено служб: $disabledCount."
+                Logger.log("AdbCleaner blockAds: $summary")
+                AdbCleanResult(true, summary, details)
+            }
+        } catch (e: Exception) {
+            val err = e.message ?: e.toString()
+            Logger.log("AdbCleaner blockAds ошибка: $err")
+            AdbCleanResult(
+                false,
+                "Ошибка блокировки рекламы по ADB ($host:$port): $err",
+                listOf("Ошибка: $err")
+            )
+        }
+    }
 
-                // 5. Проверка, установка и запуск Media Station X (MSX) с параметром msx.cc.ua
-                Logger.log("AdbCleaner: проверка наличия $MSX_PACKAGE на ТВ...")
+    /**
+     * 3. Установка Media Station X (MSX) с настройкой портала msx.cc.ua
+     */
+    suspend fun installMsx(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
+        val details = mutableListOf<String>()
+        try {
+            Logger.log("AdbCleaner: установка MSX на $host:$port...")
+            val keyPair = loadOrCreateKeyPair(context)
+            Dadb.create(host, port, keyPair).use { dadb ->
                 val msxCheck = dadb.shell("pm list packages $MSX_PACKAGE")
                 val isMsxInstalled = msxCheck.output.contains(MSX_PACKAGE)
 
                 if (!isMsxInstalled) {
-                    details.add("📥 Установка Media Station X (MSX)...")
-                    Logger.log("AdbCleaner: MSX не установлен, попытка установки APK по ADB...")
+                    details.add("📥 Скачивание и установка Media Station X...")
                     val apkFile = downloadMsxApk(context)
                     if (apkFile != null && apkFile.exists()) {
                         try {
                             dadb.install(apkFile)
                             details.add("✅ Media Station X успешно установлен на ТВ")
-                            Logger.log("AdbCleaner: dadb.install(MSX) успешно завершен")
                         } catch (ie: Exception) {
-                            Logger.log("AdbCleaner: dadb.install ошибка: ${ie.message}, пробуем через push/pm install...")
                             val pushTarget = "/data/local/tmp/msx.apk"
                             dadb.push(apkFile, pushTarget)
                             val pmInstallResp = dadb.shell("pm install -r -g $pushTarget")
                             dadb.shell("rm -f $pushTarget")
                             if (pmInstallResp.output.contains("Success", ignoreCase = true)) {
                                 details.add("✅ Media Station X успешно установлен на ТВ (pm)")
-                                Logger.log("AdbCleaner: pm install msx.apk успешен")
                             } else {
                                 details.add("⚠️ Ошибка установки MSX: ${pmInstallResp.output.trim()}")
                             }
@@ -143,8 +181,6 @@ object AdbCleaner {
                             apkFile.delete()
                         }
                     } else {
-                        // Если сеть смартфона не смогла загрузить APK напрямую, пробуем скачать самим ТВ через curl/wget
-                        Logger.log("AdbCleaner: загрузка на смартфон не удалась, пробуем через ТВ...")
                         val tvDownloadAndInstall = dadb.shell("curl -L -k -o /data/local/tmp/msx.apk $MSX_FALLBACK_APK_URL && pm install -r -g /data/local/tmp/msx.apk && rm -f /data/local/tmp/msx.apk")
                         if (tvDownloadAndInstall.output.contains("Success", ignoreCase = true)) {
                             details.add("✅ Media Station X загружен и установлен ТВ напрямую")
@@ -154,11 +190,9 @@ object AdbCleaner {
                     }
                 } else {
                     details.add("✅ Media Station X (MSX) уже установлен на ТВ")
-                    Logger.log("AdbCleaner: $MSX_PACKAGE уже присутствует на ТВ")
                 }
 
-                // 6. Запуск Media Station X с передачей стартового параметра msx.cc.ua
-                Logger.log("AdbCleaner: запуск MSX с параметром $MSX_START_PARAMETER...")
+                // Запуск с параметром msx.cc.ua
                 val deepLinkCmd = "am start -a android.intent.action.VIEW -d \"msx://de.benzac.msx?start=$MSX_START_PARAMETER\""
                 val explicitCmd = "am start -a android.intent.action.VIEW -d \"http://$MSX_START_PARAMETER\" -n $MSX_PACKAGE/de.benzac.msx.MainActivity"
                 val launchResult = dadb.shell(deepLinkCmd)
@@ -166,22 +200,84 @@ object AdbCleaner {
                     dadb.shell(explicitCmd)
                 }
                 dadb.shell("monkey -p $MSX_PACKAGE -c android.intent.category.LAUNCHER 1")
-                details.add("🚀 Media Station X запущен с параметром: $MSX_START_PARAMETER")
-                Logger.log("AdbCleaner: запуск MSX отправлен")
+                details.add("🚀 Media Station X запущен с каталогом: $MSX_START_PARAMETER")
 
-                val summary = "Очистка завершена! AdGuard DNS активен, удалено служб: $disabledCount, MSX готов."
-                Logger.log("AdbCleaner результат: $summary")
+                val summary = "Media Station X готов к использованию на ТВ!"
                 AdbCleanResult(true, summary, details)
             }
         } catch (e: Exception) {
             val err = e.message ?: e.toString()
-            Logger.log("AdbCleaner ошибка: $err")
-            AdbCleanResult(
-                success = false,
-                summary = "Не удалось подключиться по ADB к ТВ ($host:$port). Проверьте включение 'Отладка по USB / Wi-Fi' в настройках разработчика на ТВ.",
-                details = listOf("Ошибка: $err")
-            )
+            AdbCleanResult(false, "Ошибка установки Media Station X ($host:$port): $err", listOf("Ошибка: $err"))
         }
+    }
+
+    /**
+     * 4. Установка произвольного APK файла со смартфона на ТВ по ADB
+     */
+    suspend fun installCustomApk(context: Context, host: String, apkUri: Uri, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
+        val details = mutableListOf<String>()
+        var tempFile: File? = null
+        try {
+            Logger.log("AdbCleaner: подготовка пользовательского APK к установке на $host:$port...")
+            details.add("📂 Чтение выбранного файла APK...")
+            val keyPair = loadOrCreateKeyPair(context)
+
+            tempFile = File(context.cacheDir, "custom_app_${System.currentTimeMillis()}.apk")
+            context.contentResolver.openInputStream(apkUri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IllegalStateException("Не удалось прочитать выбранный файл")
+
+            val sizeMb = "%.1f".format(tempFile.length() / (1024.0 * 1024.0))
+            details.add("📦 Размер файла: $sizeMb МБ")
+            Logger.log("AdbCleaner: размер APK $sizeMb МБ, передача на ТВ...")
+
+            Dadb.create(host, port, keyPair).use { dadb ->
+                val pushTarget = "/data/local/tmp/custom_install.apk"
+                details.add("📡 Передача APK на телевизор...")
+                dadb.push(tempFile, pushTarget)
+                details.add("⚙️ Установка приложения (pm install)...")
+                val installResp = dadb.shell("pm install -r -g $pushTarget")
+                dadb.shell("rm -f $pushTarget")
+
+                if (installResp.output.contains("Success", ignoreCase = true)) {
+                    details.add("✅ Приложение успешно установлено на телевизор!")
+                    AdbCleanResult(true, "APK успешно установлен на ТВ!", details)
+                } else {
+                    details.add("⚠️ Ошибка pm install: ${installResp.output.trim()}")
+                    AdbCleanResult(false, "Ошибка при установке: ${installResp.output.trim()}", details)
+                }
+            }
+        } catch (e: Exception) {
+            val err = e.message ?: e.toString()
+            Logger.log("AdbCleaner installCustomApk ошибка: $err")
+            AdbCleanResult(false, "Не удалось установить APK: $err", listOf("Ошибка: $err"))
+        } finally {
+            tempFile?.delete()
+        }
+    }
+
+    /**
+     * Комплексная очистка ТВ от рекламы, телеметрии, мусора + Установка и настройка MSX
+     */
+    suspend fun cleanTv(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
+        val details = mutableListOf<String>()
+        val blockRes = blockAds(context, host, port)
+        details.addAll(blockRes.details)
+        if (!blockRes.success) return@withContext blockRes
+
+        val cacheRes = cleanCache(context, host, port)
+        details.addAll(cacheRes.details)
+
+        val msxRes = installMsx(context, host, port)
+        details.addAll(msxRes.details)
+
+        AdbCleanResult(
+            true,
+            "Комплексная очистка завершена: реклама заблокирована, кэш очищен, MSX готов!",
+            details
+        )
     }
 
     private fun downloadMsxApk(context: Context): File? {
@@ -200,7 +296,7 @@ object AdbCleaner {
                         tempFile.outputStream().use { out ->
                             response.body!!.byteStream().copyTo(out)
                         }
-                        if (tempFile.length() > 500_000) { // APK должен быть больше 500 Кб
+                        if (tempFile.length() > 500_000) {
                             Logger.log("AdbCleaner: MSX APK успешно скачан (${tempFile.length()} байт)")
                             return tempFile
                         } else {
@@ -216,7 +312,7 @@ object AdbCleaner {
     }
 
     /**
-     * Восстановление заводских настроек (если пользователь захочет вернуть всё)
+     * Восстановление заводских настроек (сброс DNS и включение служб обратно)
      */
     suspend fun restoreTv(context: Context, host: String, port: Int = 5555): AdbCleanResult = withContext(Dispatchers.IO) {
         val details = mutableListOf<String>()
@@ -250,9 +346,9 @@ object AdbCleaner {
             val err = e.message ?: e.toString()
             Logger.log("AdbCleaner restore ошибка: $err")
             AdbCleanResult(
-                success = false,
-                summary = "Ошибка восстановления по ADB ($host:$port): $err",
-                details = listOf("Ошибка: $err")
+                false,
+                "Ошибка восстановления по ADB ($host:$port): $err",
+                listOf("Ошибка: $err")
             )
         }
     }

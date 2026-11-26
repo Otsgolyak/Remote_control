@@ -1,9 +1,12 @@
 package com.remote.control.ui.screens
 
+import android.net.Uri
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -52,13 +55,40 @@ fun SettingsScreen(
     var promoCodeInput by remember { mutableStateOf("") }
     var isSendingBugReport by remember { mutableStateOf(false) }
     var isSendingFeedback by remember { mutableStateOf(false) }
-    var isCleaningTv by remember { mutableStateOf(false) }
+    var activeAdbTask by remember { mutableStateOf<String?>(null) }
     var cleanResultDialog by remember { mutableStateOf<AdbCleanResult?>(null) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
     var feedbackSenderName by remember { mutableStateOf("") }
     var feedbackMessageText by remember { mutableStateOf("") }
     var attachLogsToEmail by remember { mutableStateOf(true) }
     var isLogsExpanded by remember { mutableStateOf(false) }
+
+    val deviceIp = state.selectedDeviceIp
+    val isAdbAvailable = state.isConnected && !state.isSamsungMode && !state.isLgMode && deviceIp != null
+    val connectionWarning = when {
+        state.isSamsungMode -> "Функции ADB доступны только для Android TV"
+        state.isLgMode -> "Функции ADB доступны только для Android TV"
+        !state.isConnected || deviceIp == null -> "Подключитесь к Android TV для работы с ADB"
+        else -> null
+    }
+
+    val apkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            if (deviceIp != null && isAdbAvailable) {
+                activeAdbTask = "apk"
+                Toast.makeText(context, "Передача и установка APK на ТВ...", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    val res = AdbCleaner.installCustomApk(context, deviceIp, uri)
+                    activeAdbTask = null
+                    cleanResultDialog = res
+                }
+            } else {
+                Toast.makeText(context, "Подключитесь к Android TV для установки APK", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         containerColor = colors.background,
@@ -258,14 +288,14 @@ fun SettingsScreen(
                 }
             }
 
-            // TV Ad & Bloatware Cleaner Card
+            // 1. Очистка кэша ТВ
             Card(
                 colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(if (!isPremium) Modifier.alpha(0.6f) else Modifier),
-                border = BorderStroke(1.dp, if (isPremium) colors.success.copy(alpha = 0.35f) else colors.cardBorder)
+                border = BorderStroke(1.dp, if (isPremium) colors.primary.copy(alpha = 0.35f) else colors.cardBorder)
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -282,13 +312,13 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
                             Icon(
-                                Icons.Default.Security,
+                                Icons.Default.CleaningServices,
                                 contentDescription = null,
-                                tint = if (isPremium) colors.success else colors.textSecondary,
+                                tint = if (isPremium) colors.primary else colors.textSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                "Очистка ТВ от рекламы",
+                                "Очистка кэша ТВ",
                                 color = colors.textPrimary,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp
@@ -323,61 +353,166 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (!isPremium) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFFFB300).copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFB300),
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    "Доступно в Premium подписке",
-                                    color = Color(0xFFFFB300),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
                     Text(
-                        "Включает AdGuard DNS, блокирует рекламу Xiaomi/Google, чистит кэш и устанавливает Media Station X с порталом msx.cc.ua.",
+                        "Очищает системный кэш приложений и временные файлы в памяти Android TV, освобождая оперативную и постоянную память.",
                         color = colors.textSecondary,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )
 
-                    val deviceIp = state.selectedDeviceIp
-                    val isConnected = state.isConnected && !state.isSamsungMode && deviceIp != null
+                    Button(
+                        enabled = isPremium && isAdbAvailable && activeAdbTask == null,
+                        onClick = {
+                            if (!isPremium) {
+                                Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (deviceIp != null) {
+                                activeAdbTask = "cache"
+                                Toast.makeText(context, "Очистка кэша ТВ по ADB...", Toast.LENGTH_SHORT).show()
+                                scope.launch {
+                                    val res = AdbCleaner.cleanCache(context, deviceIp)
+                                    activeAdbTask = null
+                                    cleanResultDialog = res
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isPremium) colors.primary else colors.actionButton)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (activeAdbTask == "cache") {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    if (isPremium) Icons.Default.DeleteSweep else Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = if (isPremium) Color.White else colors.actionButtonText,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Text(
+                                if (activeAdbTask == "cache") "Очистка кэша..." else "Очистить кэш",
+                                color = if (isPremium) Color.White else colors.actionButtonText,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    if (!isPremium) {
+                        Text(
+                            "Доступно в Premium подписке. Активируйте промокод выше.",
+                            color = Color(0xFFFFB300),
+                            fontSize = 11.sp
+                        )
+                    } else if (connectionWarning != null) {
+                        Text(
+                            connectionWarning,
+                            color = colors.warning,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            // 2. Блокировка рекламы и трекеров
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (!isPremium) Modifier.alpha(0.6f) else Modifier),
+                border = BorderStroke(1.dp, if (isPremium) colors.success.copy(alpha = 0.35f) else colors.cardBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Icon(
+                                Icons.Default.Security,
+                                contentDescription = null,
+                                tint = if (isPremium) colors.success else colors.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                "Блокировка рекламы",
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        if (!isPremium) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        "Premium",
+                                        color = Color(0xFFFFB300),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Text(
+                        "Включает приватный AdGuard DNS (DoT), отключает рекламный ID и встроенные рекламные службы Xiaomi и Google TV.",
+                        color = colors.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            enabled = isPremium && isConnected && !isCleaningTv,
+                            enabled = isPremium && isAdbAvailable && activeAdbTask == null,
                             onClick = {
                                 if (!isPremium) {
                                     Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
                                 if (deviceIp != null) {
-                                    isCleaningTv = true
-                                    Toast.makeText(context, "Подключение к ТВ по ADB и очистка...", Toast.LENGTH_SHORT).show()
+                                    activeAdbTask = "ads"
+                                    Toast.makeText(context, "Блокировка рекламы по ADB...", Toast.LENGTH_SHORT).show()
                                     scope.launch {
-                                        val res = AdbCleaner.cleanTv(context, deviceIp)
-                                        isCleaningTv = false
+                                        val res = AdbCleaner.blockAds(context, deviceIp)
+                                        activeAdbTask = null
                                         cleanResultDialog = res
                                     }
                                 }
@@ -390,7 +525,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                if (isCleaningTv) {
+                                if (activeAdbTask == "ads") {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(16.dp),
                                         color = Color.White,
@@ -398,14 +533,14 @@ fun SettingsScreen(
                                     )
                                 } else {
                                     Icon(
-                                        if (isPremium) Icons.Default.CleaningServices else Icons.Default.Lock,
+                                        if (isPremium) Icons.Default.Security else Icons.Default.Lock,
                                         contentDescription = null,
                                         tint = if (isPremium) Color.White else colors.actionButtonText,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
                                 Text(
-                                    if (isCleaningTv) "Очистка..." else "Очистить ТВ",
+                                    if (activeAdbTask == "ads") "Блокировка..." else "Блокировать рекламу",
                                     color = if (isPremium) Color.White else colors.actionButtonText,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
@@ -414,18 +549,18 @@ fun SettingsScreen(
                         }
 
                         OutlinedButton(
-                            enabled = isPremium && isConnected && !isCleaningTv,
+                            enabled = isPremium && isAdbAvailable && activeAdbTask == null,
                             onClick = {
                                 if (!isPremium) {
                                     Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
                                     return@OutlinedButton
                                 }
                                 if (deviceIp != null) {
-                                    isCleaningTv = true
+                                    activeAdbTask = "restore"
                                     Toast.makeText(context, "Восстановление настроек ТВ...", Toast.LENGTH_SHORT).show()
                                     scope.launch {
                                         val res = AdbCleaner.restoreTv(context, deviceIp)
-                                        isCleaningTv = false
+                                        activeAdbTask = null
                                         cleanResultDialog = res
                                     }
                                 }
@@ -436,7 +571,7 @@ fun SettingsScreen(
                             border = BorderStroke(1.dp, colors.cardBorder)
                         ) {
                             Text(
-                                "Сброс",
+                                if (activeAdbTask == "restore") "Сброс..." else "Сброс",
                                 color = colors.textSecondary,
                                 fontSize = 12.sp
                             )
@@ -449,10 +584,195 @@ fun SettingsScreen(
                             color = Color(0xFFFFB300),
                             fontSize = 11.sp
                         )
-                    } else if (!isConnected) {
+                    } else if (connectionWarning != null) {
                         Text(
-                            if (state.isSamsungMode) "Очистка по ADB доступна только для Android TV"
-                            else "Подключитесь к Android TV для выполнения очистки",
+                            connectionWarning,
+                            color = colors.warning,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            // 3. Установка файлов и приложений
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.cardBackground),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (!isPremium) Modifier.alpha(0.6f) else Modifier),
+                border = BorderStroke(1.dp, if (isPremium) Color(0xFF64B5F6).copy(alpha = 0.5f) else colors.cardBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Icon(
+                                Icons.Default.Apps,
+                                contentDescription = null,
+                                tint = if (isPremium) Color(0xFF64B5F6) else colors.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                "Установка файлов и приложений",
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        if (!isPremium) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        "Premium",
+                                        color = Color(0xFFFFB300),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Text(
+                        "Установка медиа-комбайна Media Station X (msx.cc.ua) для бесплатного просмотра фильмов и ТВ, либо установка любого APK-файла со смартфона на ТВ.",
+                        color = colors.textSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            enabled = isPremium && isAdbAvailable && activeAdbTask == null,
+                            onClick = {
+                                if (!isPremium) {
+                                    Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (deviceIp != null) {
+                                    activeAdbTask = "msx"
+                                    Toast.makeText(context, "Установка Media Station X по ADB...", Toast.LENGTH_SHORT).show()
+                                    scope.launch {
+                                        val res = AdbCleaner.installMsx(context, deviceIp)
+                                        activeAdbTask = null
+                                        cleanResultDialog = res
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1.2f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isPremium) Color(0xFF1976D2) else colors.actionButton)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (activeAdbTask == "msx") {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        if (isPremium) Icons.Default.PlayCircle else Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = if (isPremium) Color.White else colors.actionButtonText,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    if (activeAdbTask == "msx") "Установка..." else "Установить MSX",
+                                    color = if (isPremium) Color.White else colors.actionButtonText,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            enabled = isPremium && isAdbAvailable && activeAdbTask == null,
+                            onClick = {
+                                if (!isPremium) {
+                                    Toast.makeText(context, "Для использования этой функции приобретите премиум", Toast.LENGTH_SHORT).show()
+                                    return@OutlinedButton
+                                }
+                                try {
+                                    apkPickerLauncher.launch("*/*")
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Не удалось открыть выбор файлов: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1.1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textPrimary),
+                            border = BorderStroke(1.dp, if (isPremium) Color(0xFF64B5F6).copy(alpha = 0.5f) else colors.cardBorder)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (activeAdbTask == "apk") {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = colors.primary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        if (isPremium) Icons.Default.FolderOpen else Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = if (isPremium) colors.textPrimary else colors.actionButtonText,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    if (activeAdbTask == "apk") "Установка..." else "Выбрать APK",
+                                    color = colors.textPrimary,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isPremium) {
+                        Text(
+                            "Доступно в Premium подписке. Активируйте промокод выше.",
+                            color = Color(0xFFFFB300),
+                            fontSize = 11.sp
+                        )
+                    } else if (connectionWarning != null) {
+                        Text(
+                            connectionWarning,
                             color = colors.warning,
                             fontSize = 11.sp
                         )
@@ -796,7 +1116,7 @@ fun SettingsScreen(
             containerColor = colors.cardBackground,
             title = {
                 Text(
-                    if (result.success) "Очистка завершена" else "Результат операции",
+                    if (result.success) "Операция выполнена успешно" else "Результат операции",
                     color = if (result.success) colors.success else colors.error,
                     fontWeight = FontWeight.Bold
                 )
