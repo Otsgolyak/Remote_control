@@ -56,6 +56,7 @@ class SamsungConnectionManager(context: Context) {
             .hostnameVerifier { _, _ -> true }
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
+            .pingInterval(10, TimeUnit.SECONDS)
             .build()
     }
 

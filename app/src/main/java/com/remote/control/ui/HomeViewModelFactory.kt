@@ -1,5 +1,6 @@
 package com.remote.control.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.remote.control.data.ConnectionManager
@@ -13,6 +14,7 @@ import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepository
 
 class HomeViewModelFactory(
+    private val context: Context,
     private val repository: DeviceRepository,
     private val connectionManager: ConnectionManager,
     private val pairingRepository: PairingRepository,
@@ -27,6 +29,7 @@ class HomeViewModelFactory(
         if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return HomeViewModel(
+                context,
                 repository,
                 connectionManager,
                 pairingRepository,

@@ -1,5 +1,6 @@
 package com.remote.control.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remote.control.data.ConnectionManager
@@ -15,6 +16,7 @@ import com.remote.control.data.samsung.SamsungScanner
 import com.remote.control.data.wifi.DiscoveredTv
 import com.remote.control.data.wifi.NsdScanner
 import com.remote.control.data.wifi.PairingRepository
+import com.remote.control.service.TvRemoteForegroundService
 import com.remote.control.utils.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -80,6 +82,7 @@ data class RemoteState(
 )
 
 class HomeViewModel(
+    private val context: Context,
     private val repository: DeviceRepository,
     private val connectionManager: ConnectionManager,
     private val pairingRepository: PairingRepository,
@@ -138,6 +141,18 @@ class HomeViewModel(
     }
 
     init {
+        TvRemoteForegroundService.onRemoteAction = { action ->
+            viewModelScope.launch {
+                when (action) {
+                    TvRemoteForegroundService.ACTION_VOL_UP -> sendKey(RemoteKeyCode.KEYCODE_VOLUME_UP)
+                    TvRemoteForegroundService.ACTION_VOL_DOWN -> sendKey(RemoteKeyCode.KEYCODE_VOLUME_DOWN)
+                    TvRemoteForegroundService.ACTION_MUTE -> sendKey(RemoteKeyCode.KEYCODE_VOLUME_MUTE)
+                    TvRemoteForegroundService.ACTION_POWER -> sendKey(RemoteKeyCode.KEYCODE_POWER)
+                    TvRemoteForegroundService.ACTION_PLAY_PAUSE -> sendKey(RemoteKeyCode.KEYCODE_MEDIA_PLAY_PAUSE)
+                }
+            }
+        }
+
         airMouseController.onFallbackDirection = { dx, dy ->
             if (abs(dx) > abs(dy)) {
                 sendGyroKey(if (dx > 0) RemoteKeyCode.KEYCODE_DPAD_RIGHT else RemoteKeyCode.KEYCODE_DPAD_LEFT)
@@ -185,6 +200,13 @@ class HomeViewModel(
                         else -> "Не подключено"
                     }
                 )
+
+                if (connected) {
+                    val tvName = _uiState.value.selectedDeviceName ?: ip ?: "ТВ"
+                    TvRemoteForegroundService.start(context.applicationContext, tvName, prefix)
+                } else {
+                    TvRemoteForegroundService.stop(context.applicationContext)
+                }
             }
         }
 
@@ -978,5 +1000,40 @@ class HomeViewModel(
                 connectionManager.sendMessage(msg)
             }
         }
+    }
+
+    /**
+     * Быстрое восстановление соединения при разблокировке смартфона или возвращении в приложение.
+     */
+    fun ensureConnected() {
+        val ip = _uiState.value.selectedDeviceIp ?: return
+        val isLg = _uiState.value.isLgMode
+        val isSam = _uiState.value.isSamsungMode
+
+        viewModelScope.launch {
+            if (isLg && !lgWebOsConnectionManager.isConnected.value) {
+                Logger.log("HomeViewModel.ensureConnected: Быстрое переподключение к LG webOS ($ip)...")
+                lgWebOsConnectionManager.connect(ip)
+            } else if (isSam && !samsungConnectionManager.isConnected.value) {
+                Logger.log("HomeViewModel.ensureConnected: Быстрое переподключение к Samsung Tizen ($ip)...")
+                samsungConnectionManager.connect(ip)
+            } else if (!isLg && !isSam && !connectionManager.isConnected.value) {
+                Logger.log("HomeViewModel.ensureConnected: Быстрое переподключение к Android TV ($ip)...")
+                if (isConnecting.compareAndSet(false, true)) {
+                    try {
+                        connectionManager.connect(ip, 6466)
+                    } catch (e: Exception) {
+                        Logger.log("HomeViewModel.ensureConnected ошибка: ${e.message}")
+                    } finally {
+                        isConnecting.set(false)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        TvRemoteForegroundService.stop(context.applicationContext)
     }
 }

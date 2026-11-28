@@ -43,6 +43,17 @@ import com.remote.control.utils.Logger
 
 class MainActivity : ComponentActivity() {
 
+    private var homeViewModelRef: HomeViewModel? = null
+
+    fun setHomeViewModel(vm: HomeViewModel) {
+        homeViewModelRef = vm
+    }
+
+    override fun onResume() {
+        super.onResume()
+        homeViewModelRef?.ensureConnected()
+    }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -73,6 +84,9 @@ class MainActivity : ComponentActivity() {
     private fun requestPermissionsOnce() {
         val permissions = mutableListOf<String>()
         permissions.add(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
@@ -98,6 +112,7 @@ fun AppRoot() {
     val lgScanner = remember { LgScanner(context) }
     val viewModelFactory = remember {
         HomeViewModelFactory(
+            context.applicationContext,
             repository,
             connectionManager,
             pairingRepository,
@@ -110,6 +125,7 @@ fun AppRoot() {
         )
     }
     val homeViewModel: HomeViewModel = viewModel(factory = viewModelFactory)
+    (context as? MainActivity)?.setHomeViewModel(homeViewModel)
     val isDarkTheme by homeViewModel.isDarkTheme.collectAsState()
 
     val colorScheme = if (isDarkTheme) AppDarkColorScheme else AppLightColorScheme
