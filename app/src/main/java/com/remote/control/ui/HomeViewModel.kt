@@ -862,8 +862,28 @@ class HomeViewModel(
         airMouseController.dismissPairingPrompt()
     }
 
+    fun onAirMouseTabOpened() {
+        Logger.log("HomeViewModel.onAirMouseTabOpened: пробуждение курсора для текущего ТВ режима")
+        if (_uiState.value.isLgMode) {
+            lgWebOsConnectionManager.wakeCursor()
+        } else {
+            if (airMouseController.isBtConnected.value) {
+                airMouseController.wakeCursor()
+            } else {
+                autoConnectBluetoothMouse()
+            }
+        }
+    }
+
     fun setGyroEnabled(enabled: Boolean) {
         airMouseController.setGyroEnabled(enabled)
+        if (enabled) {
+            if (_uiState.value.isLgMode) {
+                lgWebOsConnectionManager.wakeCursor()
+            } else if (airMouseController.isBtConnected.value) {
+                airMouseController.wakeCursor()
+            }
+        }
     }
 
     fun onTouchpadMove(dx: Float, dy: Float) {

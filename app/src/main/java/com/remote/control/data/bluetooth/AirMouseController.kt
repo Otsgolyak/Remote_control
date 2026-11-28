@@ -42,37 +42,41 @@ data class DiscoveredBluetoothDevice(
 class AirMouseController(context: Context) : SensorEventListener {
 
     companion object {
-        // Строгий 50-байтовый HID Report Descriptor мыши (3 кнопки + 5 бит padding + X, Y, Wheel)
+        private const val MOUSE_REPORT_ID = 1
+
+        // Строгий HID Report Descriptor мыши со стандартизированным Report ID: 1
+        // (3 кнопки + 5 бит padding + X, Y, Wheel) для полной совместимости с Android TV / Linux uhid
         val MOUSE_REPORT_DESCRIPTOR = byteArrayOf(
             0x05.toByte(), 0x01.toByte(), // Usage Page (Generic Desktop)
             0x09.toByte(), 0x02.toByte(), // Usage (Mouse)
             0xA1.toByte(), 0x01.toByte(), // Collection (Application)
-            0x09.toByte(), 0x01.toByte(), // Usage (Pointer)
-            0xA1.toByte(), 0x00.toByte(), // Collection (Physical)
+            0x85.toByte(), 0x01.toByte(), //   Report ID (1) — обязательно для корректной регистрации в SurfaceFlinger/uhid
+            0x09.toByte(), 0x01.toByte(), //   Usage (Pointer)
+            0xA1.toByte(), 0x00.toByte(), //   Collection (Physical)
             // Кнопки (ЛКМ, ПКМ, СКМ)
-            0x05.toByte(), 0x09.toByte(), // Usage Page (Button)
-            0x19.toByte(), 0x01.toByte(), // Usage Minimum (1)
-            0x29.toByte(), 0x03.toByte(), // Usage Maximum (3)
-            0x15.toByte(), 0x00.toByte(), // Logical Minimum (0)
-            0x25.toByte(), 0x01.toByte(), // Logical Maximum (1)
-            0x95.toByte(), 0x03.toByte(), // Report Count (3)
-            0x75.toByte(), 0x01.toByte(), // Report Size (1)
-            0x81.toByte(), 0x02.toByte(), // Input (Data, Variable, Absolute)
+            0x05.toByte(), 0x09.toByte(), //     Usage Page (Button)
+            0x19.toByte(), 0x01.toByte(), //     Usage Minimum (1)
+            0x29.toByte(), 0x03.toByte(), //     Usage Maximum (3)
+            0x15.toByte(), 0x00.toByte(), //     Logical Minimum (0)
+            0x25.toByte(), 0x01.toByte(), //     Logical Maximum (1)
+            0x95.toByte(), 0x03.toByte(), //     Report Count (3)
+            0x75.toByte(), 0x01.toByte(), //     Report Size (1)
+            0x81.toByte(), 0x02.toByte(), //     Input (Data, Variable, Absolute)
             // Отступ (Padding) 5 бит для выравнивания байта
-            0x95.toByte(), 0x01.toByte(), // Report Count (1)
-            0x75.toByte(), 0x05.toByte(), // Report Size (5)
-            0x81.toByte(), 0x03.toByte(), // Input (Constant, Variable, Absolute)
+            0x95.toByte(), 0x01.toByte(), //     Report Count (1)
+            0x75.toByte(), 0x05.toByte(), //     Report Size (5)
+            0x81.toByte(), 0x03.toByte(), //     Input (Constant, Variable, Absolute)
             // Оси X, Y и колесо прокрутки
-            0x05.toByte(), 0x01.toByte(), // Usage Page (Generic Desktop)
-            0x09.toByte(), 0x30.toByte(), // Usage (X)
-            0x09.toByte(), 0x31.toByte(), // Usage (Y)
-            0x09.toByte(), 0x38.toByte(), // Usage (Wheel)
-            0x15.toByte(), 0x81.toByte(), // Logical Minimum (-127)
-            0x25.toByte(), 0x7F.toByte(), // Logical Maximum (127)
-            0x75.toByte(), 0x08.toByte(), // Report Size (8)
-            0x95.toByte(), 0x03.toByte(), // Report Count (3)
-            0x81.toByte(), 0x06.toByte(), // Input (Data, Variable, Relative)
-            0xC0.toByte(),                // End Collection (Physical)
+            0x05.toByte(), 0x01.toByte(), //     Usage Page (Generic Desktop)
+            0x09.toByte(), 0x30.toByte(), //     Usage (X)
+            0x09.toByte(), 0x31.toByte(), //     Usage (Y)
+            0x09.toByte(), 0x38.toByte(), //     Usage (Wheel)
+            0x15.toByte(), 0x81.toByte(), //     Logical Minimum (-127)
+            0x25.toByte(), 0x7F.toByte(), //     Logical Maximum (127)
+            0x75.toByte(), 0x08.toByte(), //     Report Size (8)
+            0x95.toByte(), 0x03.toByte(), //     Report Count (3)
+            0x81.toByte(), 0x06.toByte(), //     Input (Data, Variable, Relative)
+            0xC0.toByte(),                //   End Collection (Physical)
             0xC0.toByte()                 // End Collection (Application)
         )
 
@@ -271,10 +275,10 @@ class AirMouseController(context: Context) : SensorEventListener {
                     // Триггер отрисовки: отправляем первое ненулевое смещение, чтобы ТВ сразу показал системный курсор
                     val hid = bluetoothHidDevice
                     val wake1 = if (hid != null && device != null) {
-                        hid.sendReport(device, 0, byteArrayOf(0, 1, 1, 0))
+                        hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(0, 1, 1, 0))
                     } else false
                     val wake2 = if (hid != null && device != null) {
-                        hid.sendReport(device, 0, byteArrayOf(0, (-1).toByte(), (-1).toByte(), 0))
+                        hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(0, (-1).toByte(), (-1).toByte(), 0))
                     } else false
                     Logger.log("BT HID: Мышь подключена к ${device?.name}[${device?.address}]! Wake-up sendReport -> wake1=$wake1, wake2=$wake2")
                 }
@@ -673,6 +677,18 @@ class AirMouseController(context: Context) : SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
+    fun wakeCursor() {
+        val hid = bluetoothHidDevice ?: return
+        val device = connectedHost ?: return
+        if (!_isBtConnected.value) return
+        controllerScope.launch {
+            hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(0, 1, 1, 0))
+            delay(20L)
+            hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(0, (-1).toByte(), (-1).toByte(), 0))
+            Logger.log("BT HID: wakeCursor() отправлен для ${device.name}")
+        }
+    }
+
     fun sendMouseDelta(dx: Int, dy: Int, wheel: Int = 0, buttons: Int = activeButtonsMask) {
         val hid = bluetoothHidDevice ?: return
         val device = connectedHost ?: return
@@ -688,7 +704,7 @@ class AirMouseController(context: Context) : SensorEventListener {
             clampedDy,
             clampedWheel
         )
-        hid.sendReport(device, 0, report)
+        hid.sendReport(device, MOUSE_REPORT_ID, report)
     }
 
     fun sendMouseDelta(dx: Float, dy: Float, wheel: Int = 0, buttons: Int = activeButtonsMask) {
@@ -722,8 +738,8 @@ class AirMouseController(context: Context) : SensorEventListener {
         }
 
         val buttonMask: Byte = if (leftButton) 0x01 else 0x02
-        val downOk = hid.sendReport(device, 0, byteArrayOf(buttonMask, 0x00, 0x00, 0x00))
-        val upOk = hid.sendReport(device, 0, byteArrayOf(0x00, 0x00, 0x00, 0x00))
+        val downOk = hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(buttonMask, 0x00, 0x00, 0x00))
+        val upOk = hid.sendReport(device, MOUSE_REPORT_ID, byteArrayOf(0x00, 0x00, 0x00, 0x00))
         Logger.log("BT HID: sendClick($btnName) к ${device.name}[${device.address}] -> down=$downOk, up=$upOk")
     }
 

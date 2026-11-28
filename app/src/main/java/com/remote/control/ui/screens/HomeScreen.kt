@@ -95,6 +95,12 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 1) {
+            homeViewModel.onAirMouseTabOpened()
+        }
+    }
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -587,6 +593,57 @@ fun HomeScreen(
                                             if (state.isBtMouseConnected) "BT Курсор: ВКЛ" else "BT Мышь",
                                             fontSize = 11.sp,
                                             color = if (state.isBtMouseConnected) colors.success else colors.actionButtonText
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!state.isLgMode && !state.isBtMouseConnected) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.surface.copy(alpha = 0.9f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        homeViewModel.makeBluetoothDiscoverable(context)
+                                        Toast.makeText(context, "Телефон видим для ТВ 5 минут. На ТВ выберите его в 'Пульты и аксессуары'", Toast.LENGTH_LONG).show()
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.BluetoothSearching,
+                                        contentDescription = null,
+                                        tint = colors.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Стрелка мыши на ТВ (Android / Samsung)",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            "Нажмите, затем на ТВ в 'Пульты' выберите телефон",
+                                            fontSize = 10.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+                                    Surface(
+                                        color = colors.primary.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            "Подключить",
+                                            color = colors.primary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                         )
                                     }
                                 }

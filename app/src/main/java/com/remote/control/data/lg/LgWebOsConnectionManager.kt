@@ -240,6 +240,9 @@ class LgWebOsConnectionManager(context: Context) {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Logger.log("LG webOS: Pointer Input Socket открыт и готов к управлению Magic Remote курсором!")
                 _isPointerConnected.value = true
+                // Немедленно пробуждаем Magic Remote курсор на экране ТВ
+                webSocket.send("type:move\ndx:2\ndy:2\ndown:0\n\n")
+                webSocket.send("type:move\ndx:-2\ndy:-2\ndown:0\n\n")
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -279,8 +282,24 @@ class LgWebOsConnectionManager(context: Context) {
 
     // --- Курсор (Magic Remote Air Mouse / Touchpad) ---
 
+    fun wakeCursor() {
+        val pws = pointerWebSocket
+        if (pws != null && _isPointerConnected.value) {
+            pws.send("type:move\ndx:2\ndy:2\ndown:0\n\n")
+            pws.send("type:move\ndx:-2\ndy:-2\ndown:0\n\n")
+            Logger.log("LG webOS: wakeCursor() — импульс отправлен в Pointer Socket")
+        } else {
+            Logger.log("LG webOS: wakeCursor() — повторный запрос Pointer Socket")
+            requestPointerInputSocket()
+        }
+    }
+
     fun sendPointerMove(dx: Float, dy: Float) {
-        val pws = pointerWebSocket ?: return
+        val pws = pointerWebSocket
+        if (pws == null || !_isPointerConnected.value) {
+            requestPointerInputSocket()
+            return
+        }
         val ix = dx.roundToInt()
         val iy = dy.roundToInt()
         if (ix == 0 && iy == 0) return
