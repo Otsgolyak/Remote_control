@@ -16,6 +16,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import com.remote.control.domain.sensor.AirMouseMotionProcessor
 import com.remote.control.utils.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -95,8 +96,7 @@ class AirMouseController(context: Context) : SensorEventListener {
     @Volatile
     var sensitivity: Float = 1.5f
 
-    private var filteredGyroX = 0f
-    private var filteredGyroZ = 0f
+    private val motionProcessor = AirMouseMotionProcessor()
     private var activeButtonsMask = 0
     private var accumX = 0f
     private var accumY = 0f
@@ -624,8 +624,7 @@ class AirMouseController(context: Context) : SensorEventListener {
         if (enabled) {
             val gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
             if (gyroSensor != null) {
-                filteredGyroX = 0f
-                filteredGyroZ = 0f
+                motionProcessor.reset()
                 sensorManager.registerListener(this, gyroSensor, SensorManager.SENSOR_DELAY_GAME)
                 _isGyroEnabled.value = true
                 Logger.log("Гироскоп Air Mouse включен (sensitivity=$sensitivity)")
@@ -646,20 +645,12 @@ class AirMouseController(context: Context) : SensorEventListener {
         val rawPitchX = event.values[0]
         val rawYawZ = event.values[2]
 
-        // Фильтр нижних частот (Low-Pass Filter) для плавного движения курсора без дрожания
-        filteredGyroZ += LOW_PASS_ALPHA * (rawYawZ - filteredGyroZ)
-        filteredGyroX += LOW_PASS_ALPHA * (rawPitchX - filteredGyroX)
-
-        val deltaX = if (abs(filteredGyroZ) > GYRO_DEADZONE) {
-            (-filteredGyroZ * BASE_GYRO_MULTIPLIER * sensitivity).roundToInt()
-        } else 0
-
-        val deltaY = if (abs(filteredGyroX) > GYRO_DEADZONE) {
-            (-filteredGyroX * BASE_GYRO_MULTIPLIER * sensitivity).roundToInt()
-        } else 0
+        val motion = motionProcessor.process(rawPitchX, rawYawZ, sensitivity)
+        val deltaX = motion.intDeltaX
+        val deltaY = motion.intDeltaY
 
         if (deltaX != 0 || deltaY != 0) {
-            onVisualCursorDelta?.invoke(deltaX.toFloat(), deltaY.toFloat())
+            onVisualCursorDelta?.invoke(motion.deltaX, motion.deltaY)
 
             // 1. Нативный Bluetooth HID курсор (приоритет)
             if (_isBtConnected.value && connectedHost != null) {
